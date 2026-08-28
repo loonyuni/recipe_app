@@ -525,8 +525,65 @@ async function loadCloudRecipes() {
       const cloudMembers = new Set(cloudRatings.map((rating) => rating.member));
       recipe.ratings = [...cloudRatings, ...localRatings.filter((rating) => !cloudMembers.has(rating.member))];
     });
+    const { data: recipeTags, error: tagsError } = await cloud.client
+      .from("recipe_tags")
+      .select("recipe_id, tags(name)")
+      .in("recipe_id", recipeIds);
+    if (tagsError) {
+      console.warn("Tag load skipped:", tagsError.message);
+    } else {
+      const tagsByRecipe = new Map(recipeIds.map((id) => [id, []]));
+      (recipeTags || []).forEach((row) => {
+        const name = row.tags?.name;
+        if (name) tagsByRecipe.get(row.recipe_id)?.push(name);
+      });
+      state.recipes.forEach((recipe) => { recipe.tags = tagsByRecipe.get(recipe.id) || []; });
+    }
   }
   render();
+}
+
+// Persist a recipe's tags to the tags/recipe_tags tables: ensure a tag row
+// exists per name for the household, then reconcile the recipe_tags links so
+// they exactly match recipe.tags. No-op unless connected to the cloud.
+async function syncRecipeTags(recipe) {
+  if (!cloud.connected || !cloud.client || !cloud.householdId || !recipe.id) return;
+  const names = [...new Set((recipe.tags || []).map((tag) => String(tag).trim()).filter(Boolean))];
+  if (names.length) {
+    const { error: upsertError } = await cloud.client
+      .from("tags")
+      .upsert(names.map((name) => ({ household_id: cloud.householdId, name })), { onConflict: "household_id,name" });
+    if (upsertError) throw upsertError;
+  }
+  const { data: tagRows, error: tagRowsError } = await cloud.client
+    .from("tags")
+    .select("id, name")
+    .eq("household_id", cloud.householdId)
+    .in("name", names.length ? names : [""]);
+  if (tagRowsError) throw tagRowsError;
+  const wantedIds = new Set((tagRows || []).map((row) => row.id));
+  const { data: existingLinks, error: linksError } = await cloud.client
+    .from("recipe_tags")
+    .select("tag_id")
+    .eq("recipe_id", recipe.id);
+  if (linksError) throw linksError;
+  const existingIds = new Set((existingLinks || []).map((row) => row.tag_id));
+  const toAdd = [...wantedIds].filter((id) => !existingIds.has(id));
+  const toRemove = [...existingIds].filter((id) => !wantedIds.has(id));
+  if (toAdd.length) {
+    const { error } = await cloud.client
+      .from("recipe_tags")
+      .insert(toAdd.map((tagId) => ({ recipe_id: recipe.id, tag_id: tagId })));
+    if (error) throw error;
+  }
+  if (toRemove.length) {
+    const { error } = await cloud.client
+      .from("recipe_tags")
+      .delete()
+      .eq("recipe_id", recipe.id)
+      .in("tag_id", toRemove);
+    if (error) throw error;
+  }
 }
 
 async function createHousehold(displayName, householdName) {
@@ -565,6 +622,7 @@ async function saveRecipeToCloud(recipe) {
   }).select().single();
   if (error) throw error;
   recipe.id = data.id;
+  await syncRecipeTags(recipe);
 }
 
 async function updateRecipeToCloud(recipe) {
@@ -590,6 +648,7 @@ async function updateRecipeToCloud(recipe) {
     updated_at: new Date().toISOString()
   }).eq("id", recipe.id).eq("household_id", cloud.householdId);
   if (error) throw error;
+  await syncRecipeTags(recipe);
 }
 
 async function deleteRecipeFromCloud(recipe) {
