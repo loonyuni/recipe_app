@@ -465,6 +465,7 @@ async function loadCloudRecipes() {
     .eq("household_id", cloud.householdId)
     .order("updated_at", { ascending: false });
   if (error) throw error;
+  const rowsById = new Map((data || []).map((row) => [row.id, row]));
   state.recipes = (data || []).map(recipeFromRow);
   cloud.connected = true;
 
@@ -480,8 +481,19 @@ async function loadCloudRecipes() {
     }
     state.recipes.unshift(pendingRecipe);
   }
+  // Backfill image/measurement columns only for rows that are actually stale.
+  // Previously this issued an UPDATE for every image-bearing recipe on every
+  // page load; now we compare against the fetched row and skip no-op writes.
   await Promise.all(state.recipes
     .filter((recipe) => recipe.imageUrls?.length)
+    .filter((recipe) => {
+      const row = rowsById.get(recipe.id);
+      if (!row) return false;
+      const sameUrls = JSON.stringify(row.image_urls || []) === JSON.stringify(recipe.imageUrls);
+      const sameImage = (row.image_url || null) === (recipe.imageUrl || null);
+      const sameMode = (row.measurement_mode || "both") === (recipe.measurementMode || "both");
+      return !(sameUrls && sameImage && sameMode);
+    })
     .map(async (recipe) => {
       const { error: imageError } = await cloud.client.from("recipes").update({
         image_url: recipe.imageUrl || null,
@@ -1194,14 +1206,29 @@ $("#auth-button").addEventListener("click", async () => {
   }
   await cloud.client.auth.signOut();
 });
-$("#add-label-button").addEventListener("click", () => {
-  const tag = window.prompt("New label name");
-  if (tag?.trim()) {
-    state.recipes[0].tags.push(tag.trim());
-    saveRecipes();
-    render();
-    showToast(`Added “${tag.trim()}” to the label list.`);
+$("#add-label-button").addEventListener("click", async () => {
+  // Labels live as tags on recipes, so a new label has to attach to one.
+  // Use the recipe currently open in the drawer; otherwise there's no target.
+  const recipe = state.activeRecipe;
+  if (!recipe) {
+    showToast("Open a recipe first, then add a label to it.");
+    return;
   }
+  const tag = window.prompt("New label name")?.trim();
+  if (!tag) return;
+  if (recipe.tags.includes(tag)) {
+    showToast(`“${tag}” is already on this recipe.`);
+    return;
+  }
+  recipe.tags.push(tag);
+  saveRecipes();
+  render();
+  try {
+    await updateRecipeToCloud(recipe);
+  } catch (error) {
+    console.warn("Label cloud sync skipped:", error.message);
+  }
+  showToast(`Added “${tag}” to ${recipe.title}.`);
 });
 $("#drawer-close").addEventListener("click", closeDrawer);
 $("#modal-close").addEventListener("click", closeModal);
