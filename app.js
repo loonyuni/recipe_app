@@ -751,20 +751,111 @@ function renderLabels() {
   $$(".label-item").forEach((item) => item.addEventListener("click", () => toggleTag(item.dataset.tag)));
 }
 
+function renderLabelManager() {
+  const list = $("#label-manager-list");
+  if (!list) return;
+  const tags = allTags();
+  list.innerHTML = tags.length
+    ? tags.map((tag) => `
+      <div class="label-manager-row" data-tag="${escAttr(tag)}">
+        <input class="label-manager-name" value="${escAttr(tag)}" aria-label="Rename ${escAttr(tag)}" />
+        <span class="label-manager-count">${labelUsageCount(tag)}</span>
+        <button type="button" class="ghost-button label-manager-rename" data-rename="${escAttr(tag)}">Rename</button>
+        <button type="button" class="danger-button label-manager-delete" data-delete="${escAttr(tag)}">Delete</button>
+      </div>`).join("")
+    : `<p class="label-manager-empty">No labels yet. Add labels to recipes to manage them here.</p>`;
+
+  const suggestions = auditLabels();
+  const audit = $("#label-manager-audit");
+  audit.innerHTML = suggestions.length
+    ? `<p class="eyebrow">Possibly overlapping</p>${suggestions.map((pair) => `
+        <div class="label-audit-row">
+          <span><strong>${esc(pair.a)}</strong> &amp; <strong>${esc(pair.b)}</strong> · <span class="label-audit-reason">${esc(pair.reason)}</span></span>
+          <span class="label-audit-actions">
+            <button type="button" class="ghost-button" data-merge-into="${escAttr(pair.a)}" data-merge-from="${escAttr(pair.b)}">Merge into “${esc(pair.a)}”</button>
+            <button type="button" class="ghost-button" data-merge-into="${escAttr(pair.b)}" data-merge-from="${escAttr(pair.a)}">Merge into “${esc(pair.b)}”</button>
+          </span>
+        </div>`).join("")}`
+    : `<p class="label-manager-empty">No overlapping labels detected.</p>`;
+
+  list.querySelectorAll(".label-manager-rename").forEach((button) => button.addEventListener("click", async () => {
+    const row = button.closest(".label-manager-row");
+    const input = row.querySelector(".label-manager-name");
+    await renameLabel(button.dataset.rename, input.value);
+    renderLabelManager();
+  }));
+  list.querySelectorAll(".label-manager-name").forEach((input) => input.addEventListener("keydown", async (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    await renameLabel(input.closest(".label-manager-row").dataset.tag, input.value);
+    renderLabelManager();
+  }));
+  list.querySelectorAll(".label-manager-delete").forEach((button) => button.addEventListener("click", async () => {
+    await deleteLabel(button.dataset.delete);
+    renderLabelManager();
+  }));
+  audit.querySelectorAll("[data-merge-from]").forEach((button) => button.addEventListener("click", async () => {
+    // Merging is a rename of the "from" label onto the "into" label.
+    await renameLabel(button.dataset.mergeFrom, button.dataset.mergeInto);
+    renderLabelManager();
+  }));
+}
+
+function openLabelManager() {
+  renderLabelManager();
+  $("#label-manager-modal").hidden = false;
+}
+
+function closeLabelManager() {
+  $("#label-manager-modal").hidden = true;
+}
+
+const SEARCH_SYNONYMS = {
+  cozy: ["comfort food", "chili", "pot pie", "warm"],
+  dinner: ["weeknight", "weekday dinner", "hosting"],
+  easy: ["weeknight", "quick", "family favorite"],
+  family: ["family favorite", "mom", "crowd"],
+  hosting: ["hosting", "potluck", "make ahead"],
+  healthy: ["salad", "lentil", "fish"],
+  vegetarian: ["vegetarian", "lentil"],
+  fish: ["fish", "salmon", "pescatarian"],
+  sweet: ["dessert", "cake"],
+  snack: ["snack", "potluck"]
+};
+
+// Cuisine / food-ethnicity labels, keyed to signal words that appear in a
+// recipe's title, ingredients, or description. Used to auto-suggest a cuisine
+// label on import so the archive can be browsed by tradition, not just by dish.
+const CUISINE_KEYWORDS = {
+  chinese: ["soy sauce", "hoisin", "five spice", "bok choy", "szechuan", "sichuan", "wok", "shaoxing", "char siu", "lo mein", "dumpling", "wonton"],
+  japanese: ["miso", "dashi", "mirin", "sake", "nori", "sushi", "ramen", "teriyaki", "udon", "panko", "matcha"],
+  korean: ["gochujang", "gochugaru", "kimchi", "bulgogi", "bibimbap", "doenjang", "korean"],
+  thai: ["fish sauce", "lemongrass", "coconut milk", "thai", "curry paste", "galangal", "pad thai", "kaffir"],
+  vietnamese: ["nuoc cham", "pho", "banh mi", "vietnamese", "rice paper"],
+  indian: ["garam masala", "turmeric", "cumin", "curry", "paneer", "tikka", "masala", "naan", "dal", "tandoori", "ghee"],
+  mediterranean: ["olive oil", "feta", "chickpea", "tahini", "hummus", "za'atar", "pita", "tzatziki", "halloumi"],
+  italian: ["parmesan", "pasta", "basil", "mozzarella", "risotto", "pesto", "prosciutto", "marinara", "gnocchi", "ricotta"],
+  mexican: ["tortilla", "cumin", "cilantro", "jalapeno", "salsa", "taco", "enchilada", "chipotle", "queso", "masa"],
+  french: ["butter", "shallot", "dijon", "creme fraiche", "baguette", "gruyere", "béchamel", "bechamel", "confit"],
+  soul: ["collard", "black-eyed pea", "grits", "cornbread", "okra", "smothered", "fried chicken", "gumbo", "hush puppy"],
+  asian: ["soy sauce", "sesame oil", "ginger", "rice vinegar", "sriracha"]
+};
+
+function detectCuisines(text) {
+  return Object.entries(CUISINE_KEYWORDS)
+    .filter(([, keywords]) => keywords.some((keyword) => text.includes(keyword)))
+    .map(([cuisine]) => cuisine);
+}
+
 function semanticTerms(query) {
-  const synonyms = {
-    cozy: ["comfort food", "chili", "pot pie", "warm"],
-    dinner: ["weeknight", "weekday dinner", "hosting"],
-    easy: ["weeknight", "quick", "family favorite"],
-    family: ["family favorite", "mom", "crowd"],
-    hosting: ["hosting", "potluck", "make ahead"],
-    healthy: ["salad", "lentil", "fish"],
-    vegetarian: ["vegetarian", "lentil"],
-    fish: ["fish", "salmon", "pescatarian"],
-    sweet: ["dessert", "cake"],
-    snack: ["snack", "potluck"]
-  };
-  return query.toLowerCase().split(/\s+/).flatMap((word) => [word, ...(synonyms[word] || [])]);
+  return query.toLowerCase().split(/\s+/).flatMap((word) => [word, ...(SEARCH_SYNONYMS[word] || [])]);
+}
+
+// Groups of related terms drawn from the search synonym map, used by the label
+// audit to spot labels that mean roughly the same thing. Each key is included
+// alongside its synonyms so e.g. "easy" and "weeknight" land in one group.
+function semanticGroups() {
+  return Object.entries(SEARCH_SYNONYMS).map(([key, values]) => [key, ...values]);
 }
 
 function filteredRecipes() {
@@ -819,6 +910,8 @@ function renderFilters() {
   $("#active-filters").innerHTML = state.selectedTags.map((tag) => `
     <span class="filter-chip">${esc(tag)}<button aria-label="Remove ${escAttr(tag)}" data-remove-tag="${escAttr(tag)}">×</button></span>`).join("");
   $$("[data-remove-tag]").forEach((button) => button.addEventListener("click", () => toggleTag(button.dataset.removeTag)));
+  const clearButton = $("#clear-filters-button");
+  if (clearButton) clearButton.hidden = state.selectedTags.length === 0;
 }
 
 function render() {
@@ -835,6 +928,106 @@ function toggleTag(tag) {
     ? state.selectedTags.filter((selected) => selected !== tag)
     : [...state.selectedTags, tag];
   render();
+}
+
+function clearFilters() {
+  if (!state.selectedTags.length) return;
+  state.selectedTags = [];
+  render();
+}
+
+function labelUsageCount(tag) {
+  return state.recipes.filter((recipe) => recipe.tags.includes(tag)).length;
+}
+
+// Recipes whose tag list changed while renaming/deleting a label, so the caller
+// can persist just those to the cloud instead of every recipe.
+function recipesWithTag(tag) {
+  return state.recipes.filter((recipe) => recipe.tags.includes(tag));
+}
+
+async function persistTagChanges(changedRecipes) {
+  saveRecipes();
+  if (state.selectedTags.length) {
+    state.selectedTags = state.selectedTags.filter((tag) => allTags().includes(tag));
+  }
+  render();
+  if (!cloud.connected) return;
+  for (const recipe of changedRecipes) {
+    try {
+      await updateRecipeToCloud(recipe);
+    } catch (error) {
+      console.warn("Label sync skipped:", error.message);
+    }
+  }
+}
+
+// Rename a label everywhere. If the new name already exists on some recipes the
+// two labels merge: every recipe with either name ends up with just the new
+// name, deduped and order-preserved.
+async function renameLabel(oldTag, rawNewTag) {
+  const newTag = String(rawNewTag || "").trim();
+  if (!newTag || newTag === oldTag) return;
+  const changed = recipesWithTag(oldTag);
+  changed.forEach((recipe) => {
+    const next = recipe.tags.map((tag) => (tag === oldTag ? newTag : tag));
+    recipe.tags = [...new Set(next)];
+  });
+  await persistTagChanges(changed);
+  showToast(`Renamed “${oldTag}” to “${newTag}”.`);
+}
+
+async function deleteLabel(tag) {
+  const changed = recipesWithTag(tag);
+  if (!changed.length) return;
+  if (!window.confirm(`Remove the “${tag}” label from ${changed.length} recipe${changed.length === 1 ? "" : "s"}?`)) return;
+  changed.forEach((recipe) => { recipe.tags = recipe.tags.filter((item) => item !== tag); });
+  state.selectedTags = state.selectedTags.filter((item) => item !== tag);
+  await persistTagChanges(changed);
+  showToast(`Removed the “${tag}” label.`);
+}
+
+// Suggest labels that could be collapsed, combining two signals:
+//  1. co-occurrence — two labels that tag a high fraction of the same recipes
+//  2. synonyms — labels the search synonym map already treats as related
+function auditLabels() {
+  const tags = allTags();
+  const suggestions = [];
+  const seen = new Set();
+  const addPair = (a, b, reason) => {
+    const key = [a, b].sort().join("::");
+    if (a === b || seen.has(key)) return;
+    seen.add(key);
+    suggestions.push({ a, b, reason });
+  };
+
+  // Synonym-based: reuse the same map the search uses.
+  const synonymGroups = semanticGroups();
+  synonymGroups.forEach((group) => {
+    const present = group.filter((tag) => tags.includes(tag));
+    for (let i = 0; i < present.length; i += 1) {
+      for (let j = i + 1; j < present.length; j += 1) {
+        addPair(present[i], present[j], "similar meaning");
+      }
+    }
+  });
+
+  // Co-occurrence-based: labels sharing most of their recipes.
+  for (let i = 0; i < tags.length; i += 1) {
+    for (let j = i + 1; j < tags.length; j += 1) {
+      const a = tags[i];
+      const b = tags[j];
+      const aSet = new Set(recipesWithTag(a));
+      const bRecipes = recipesWithTag(b);
+      const shared = bRecipes.filter((recipe) => aSet.has(recipe)).length;
+      const union = aSet.size + bRecipes.length - shared;
+      if (union > 0 && shared > 0) {
+        const overlap = shared / union;
+        if (overlap >= 0.6) addPair(a, b, `overlap ${Math.round(overlap * 100)}% of recipes`);
+      }
+    }
+  }
+  return suggestions;
 }
 
 function openDrawer(id) {
@@ -1086,7 +1279,12 @@ function renderSuggestedTags(draft) {
     draft.servings >= 6 ? "hosting" : null,
     /make ahead|advance|chill overnight/.test(combined) ? "make ahead" : null
   ].filter(Boolean);
-  const uniqueSuggestions = [...new Set(suggestions)];
+  // Fold in any detected cuisine/ethnicity labels. "asian" is broad, so only
+  // keep it when no more specific Asian cuisine already matched.
+  const cuisines = detectCuisines(combined);
+  const specificAsian = ["chinese", "japanese", "korean", "thai", "vietnamese"];
+  const cuisineSuggestions = cuisines.filter((cuisine) => cuisine !== "asian" || !cuisines.some((other) => specificAsian.includes(other)));
+  const uniqueSuggestions = [...new Set([...suggestions, ...cuisineSuggestions])];
   $("#suggested-tags").innerHTML = (uniqueSuggestions.length ? uniqueSuggestions : ["new recipe"]).map((tag) => `
     <button type="button" class="suggested-tag is-selected" data-suggested-tag="${escAttr(tag)}">${esc(tag)} ✓</button>`).join("");
   $$("[data-suggested-tag]").forEach((button) => button.addEventListener("click", () => {
@@ -1237,6 +1435,11 @@ $("#add-label-button").addEventListener("click", async () => {
   }
   showToast(`Added “${tag}” to ${recipe.title}.`);
 });
+$("#clear-filters-button").addEventListener("click", clearFilters);
+$("#manage-labels-button").addEventListener("click", openLabelManager);
+$("#label-manager-close").addEventListener("click", closeLabelManager);
+$("#label-manager-done").addEventListener("click", closeLabelManager);
+$("#label-manager-modal").addEventListener("click", (event) => { if (event.target.id === "label-manager-modal") closeLabelManager(); });
 $("#drawer-close").addEventListener("click", closeDrawer);
 $("#modal-close").addEventListener("click", closeModal);
 $("#cancel-form").addEventListener("click", closeModal);
@@ -1272,7 +1475,7 @@ document.addEventListener("click", (event) => {
 });
 document.addEventListener("keydown", (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); $("#search-input").focus(); }
-  if (event.key === "Escape") { closeDrawer(); closeModal(); closeImportModal(); closeAuthModal(); $("#filter-popover").hidden = true; }
+  if (event.key === "Escape") { closeDrawer(); closeModal(); closeImportModal(); closeAuthModal(); closeLabelManager(); $("#filter-popover").hidden = true; }
 });
 $$(".nav-item").forEach((item) => item.addEventListener("click", () => { state.view = item.dataset.view; render(); }));
 $("#recipe-form").addEventListener("submit", (event) => {

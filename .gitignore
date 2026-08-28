@@ -7,3 +7,6 @@ supabase/.branches/
 
 # Editor / OS noise
 .DS_Store
+
+# Playwright MCP snapshots
+.playwright-mcp/

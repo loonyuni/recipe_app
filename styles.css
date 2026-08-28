@@ -62,7 +62,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .nav-icon { display: inline-block; width: 24px; color: var(--red); font-size: 17px; }
 .sidebar-section { margin-top: 50px; }
 .sidebar-heading { display: flex; justify-content: space-between; align-items: center; padding: 0 12px 10px; color: var(--muted); font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
-.icon-button { border: 0; color: var(--red); background: transparent; font-size: 20px; line-height: 1; }
+.icon-button { border: 0; color: var(--red); background: transparent; font-size: 20px; line-height: 1; cursor: pointer; }
+.sidebar-heading-actions { display: flex; align-items: center; gap: 8px; }
+.sidebar-heading-actions .icon-button { font-size: 15px; }
 .label-list { display: grid; gap: 3px; }
 .label-item { display: flex; align-items: center; gap: 9px; padding: 8px 12px; color: var(--muted); border-radius: 6px; cursor: pointer; }
 .label-item:hover { color: var(--ink); background: var(--paper-deep); }
@@ -203,6 +205,17 @@ h2 span { color: var(--muted); font: 400 11px var(--mono); vertical-align: middl
 @keyframes rise-in { from { transform: translateY(15px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 .modal h2 { margin-bottom: 25px; font-size: 42px; }
 .modal-intro { max-width: 470px; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.label-manager-list { display: grid; gap: 6px; margin: 22px 0 4px; }
+.label-manager-row { display: flex; align-items: center; gap: 10px; }
+.label-manager-name { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--white); color: var(--ink); font-size: 13px; }
+.label-manager-count { min-width: 24px; text-align: center; color: var(--muted); font: 500 11px var(--mono); }
+.label-manager-row .ghost-button, .label-manager-row .danger-button { padding: 7px 11px; font-size: 11px; }
+.label-manager-audit { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+.label-audit-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 9px 0; font-size: 12px; }
+.label-audit-reason { color: var(--muted); }
+.label-audit-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.label-audit-actions .ghost-button { padding: 6px 10px; font-size: 11px; }
+.label-manager-empty { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 14px 0 0; }
 .import-modal { width: min(650px, 100%); }
 .import-modal h2 { margin-bottom: 14px; }
 .import-tabs { display: flex; gap: 5px; margin: 27px 0 17px; border-bottom: 1px solid var(--line); }
