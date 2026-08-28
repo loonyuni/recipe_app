@@ -1,1 +1,9 @@
+# Frontend Supabase config (holds the project URL + publishable key)
 supabase-config.js
+
+# Supabase CLI local state — contains project ref, org id, and pooler URL
+supabase/.temp/
+supabase/.branches/
+
+# Editor / OS noise
+.DS_Store
