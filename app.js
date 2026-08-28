@@ -697,7 +697,19 @@ async function initSupabase() {
   if (!window.supabase || !window.KITCHEN_ARCHIVE_SUPABASE?.url || !window.KITCHEN_ARCHIVE_SUPABASE?.anonKey) return;
   cloud.client = window.supabase.createClient(
     window.KITCHEN_ARCHIVE_SUPABASE.url,
-    window.KITCHEN_ARCHIVE_SUPABASE.anonKey
+    window.KITCHEN_ARCHIVE_SUPABASE.anonKey,
+    {
+      auth: {
+        // Keep the user signed in across visits: store the session in
+        // localStorage and silently refresh the access token in the
+        // background so a single login per device sticks indefinitely
+        // (until the refresh token itself expires — configured in Supabase).
+        persistSession: true,
+        autoRefreshToken: true,
+        storage: window.localStorage,
+        storageKey: "kitchen-archive-auth"
+      }
+    }
   );
   cloud.client.auth.onAuthStateChange(async (_event, session) => {
     cloud.session = session;
