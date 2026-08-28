@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5f0e7" />
+    <title>Kitchen Archive</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Manrope:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css?v=20260828-llm-import" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">✳</span>
+          <div>
+            <span class="brand-name">Kitchen</span>
+            <span class="brand-name brand-name--italic">Archive</span>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="Primary navigation">
+          <button class="nav-item is-active" data-view="library">
+            <span class="nav-icon">⌂</span> Library
+          </button>
+          <button class="nav-item" data-view="favorites">
+            <span class="nav-icon">♡</span> Family favorites
+          </button>
+          <button class="nav-item" data-view="recent">
+            <span class="nav-icon">◷</span> Recently cooked
+          </button>
+        </nav>
+
+        <div class="sidebar-section">
+          <div class="sidebar-heading">
+            <span>Your labels</span>
+            <button class="icon-button" id="add-label-button" aria-label="Add label">+</button>
+          </div>
+          <div id="label-list" class="label-list"></div>
+        </div>
+
+        <div class="sidebar-bottom">
+          <div class="archive-note">
+            <span class="archive-note__spark">✦</span>
+            <div>
+              <strong>Keep the source.</strong>
+              <p>Your original PDFs and notes stay attached to every recipe.</p>
+            </div>
+          </div>
+          <button class="settings-button">⚙ Settings</button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div class="mobile-brand">
+            <span class="brand-mark">✳</span>
+            <span>Kitchen Archive</span>
+          </div>
+          <div class="topbar-actions">
+            <button class="ghost-button" id="auth-button">Sign in</button>
+            <button class="ghost-button" id="import-button">＋ Import recipe</button>
+            <button class="primary-button" id="new-recipe-button">Add recipe <span>↗</span></button>
+          </div>
+        </header>
+
+        <section class="hero">
+          <div>
+            <p class="eyebrow">Your household cookbook</p>
+            <h1>What are we<br /><em>making?</em></h1>
+            <p class="hero-copy">A living archive for the recipes you return to, tweak, and make your own.</p>
+          </div>
+          <div class="hero-doodle" aria-hidden="true">
+            <span class="doodle-line doodle-line--one"></span>
+            <span class="doodle-line doodle-line--two"></span>
+            <span class="doodle-leaf">❧</span>
+          </div>
+        </section>
+
+        <section class="search-section">
+          <div class="search-box">
+            <span class="search-icon">⌕</span>
+            <input
+              id="search-input"
+              type="search"
+              placeholder="Try “cozy dinner for six” or search by ingredient…"
+              autocomplete="off"
+            />
+            <kbd>⌘ K</kbd>
+          </div>
+          <div class="filter-row">
+            <div id="active-filters" class="active-filters"></div>
+            <button class="filter-button" id="filter-button">＋ Filter</button>
+            <span id="result-count" class="result-count"></span>
+          </div>
+        </section>
+
+        <section class="content-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">The collection</p>
+              <h2 id="view-title">All recipes <span id="recipe-count"></span></h2>
+            </div>
+            <div class="sort-control">
+              <label for="sort-select">Sort</label>
+              <select id="sort-select">
+                <option value="recent">Recently added</option>
+                <option value="rating">Highest rated</option>
+                <option value="title">Title</option>
+                <option value="time">Quickest</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="recipe-grid" class="recipe-grid"></div>
+          <div id="empty-state" class="empty-state" hidden>
+            <div class="empty-state__mark">✳</div>
+            <h3>No recipes found</h3>
+            <p>Try a different search, remove a filter, or add the first recipe.</p>
+            <button class="primary-button" id="empty-new-button">Add a recipe <span>↗</span></button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="recipe-drawer" class="drawer-backdrop" hidden>
+      <aside class="recipe-drawer" aria-labelledby="drawer-title">
+        <button class="drawer-close" id="drawer-close" aria-label="Close recipe">×</button>
+        <div id="drawer-content"></div>
+      </aside>
+    </div>
+
+    <div id="recipe-modal" class="modal-backdrop" hidden>
+      <section class="modal" aria-labelledby="modal-title">
+        <button class="modal-close" id="modal-close" aria-label="Close">×</button>
+        <p class="eyebrow" id="modal-eyebrow">Add to the archive</p>
+        <h2 id="modal-title">New recipe</h2>
+        <form id="recipe-form">
+          <label>
+            Recipe title
+            <input name="title" required placeholder="e.g. Sunday tomato sauce" />
+          </label>
+          <div class="form-grid">
+            <label>
+              Time
+              <input name="time" placeholder="45 min" />
+            </label>
+            <label>
+              Serves
+              <input name="servings" type="number" min="1" placeholder="4" />
+            </label>
+          </div>
+          <label>
+            Labels
+            <input name="tags" placeholder="weeknight, vegetarian, make ahead" />
+          </label>
+          <label>
+            Description
+            <textarea name="description" rows="3" placeholder="What makes this one worth keeping?"></textarea>
+          </label>
+          <label>
+            Ingredients
+            <textarea name="ingredients" rows="4" placeholder="1 onion&#10;2 tbsp olive oil&#10;..."></textarea>
+          </label>
+          <label>
+            Instructions
+            <textarea name="instructions" rows="5" placeholder="Chop the vegetables...&#10;Roast until golden..."></textarea>
+          </label>
+          <div class="form-actions">
+            <button type="button" class="ghost-button" id="cancel-form">Cancel</button>
+            <button type="submit" class="primary-button">Save recipe <span>↗</span></button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <div id="import-modal" class="modal-backdrop" hidden>
+      <section class="modal import-modal" aria-labelledby="import-title">
+        <button class="modal-close" id="import-close" aria-label="Close">×</button>
+        <div id="import-entry-view">
+          <p class="eyebrow">Recipe distillation</p>
+          <h2 id="import-title">Bring in the good part.</h2>
+          <p class="modal-intro">Paste a recipe, drop in a link, or upload a file. We’ll separate the dish from the story and give you a clean draft to review.</p>
+          <div class="import-tabs" role="tablist">
+            <button class="import-tab" data-import-tab="paste" role="tab">Paste text</button>
+            <button class="import-tab is-active" data-import-tab="link" role="tab">Recipe link</button>
+            <button class="import-tab" data-import-tab="file" role="tab">PDF or image</button>
+          </div>
+          <div class="import-panel" data-import-panel="paste" hidden>
+            <label>
+              Recipe text
+              <textarea id="import-text" rows="10" placeholder="Paste the whole page here — story, ads, ingredients, and all."></textarea>
+            </label>
+          </div>
+          <div class="import-panel is-active" data-import-panel="link">
+            <label>
+              Recipe URL
+              <input id="import-url" type="url" placeholder="https://..." />
+            </label>
+            <p class="field-note">If the page is paywalled or unavailable, paste its text or upload a PDF instead.</p>
+          </div>
+          <div class="import-panel" data-import-panel="file" hidden>
+            <label class="file-drop">
+              <span class="file-drop__mark">↑</span>
+              <span><strong>Choose a PDF, screenshot, or photo</strong><small id="file-name">No file selected</small></span>
+              <input id="import-file" type="file" accept=".pdf,image/*,.txt" />
+            </label>
+            <p class="field-note">The real OCR processor will plug into this step next. Text files can be distilled in this local prototype.</p>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="ghost-button" id="import-cancel">Cancel</button>
+            <button type="button" class="ghost-button" id="manual-from-import">Enter manually</button>
+            <button type="button" class="primary-button" id="distill-button">Clean up recipe <span>✦</span></button>
+          </div>
+        </div>
+        <div id="import-review-view" hidden>
+          <p class="eyebrow">Draft ready for review</p>
+          <div class="review-heading">
+            <div>
+              <h2>Keep the dish.<br /><em>Lose the scroll.</em></h2>
+              <p class="modal-intro">This draft was cleaned from the source. Check anything marked uncertain before saving.</p>
+            </div>
+            <span class="review-stamp">AI<br />DRAFT</span>
+          </div>
+          <form id="import-review-form">
+            <label>
+              Title
+              <input name="title" required />
+            </label>
+            <div class="form-grid">
+              <label>Serves<input name="servings" type="number" min="1" /></label>
+              <label>Time<input name="time" /></label>
+            </div>
+            <label>
+              Clean description
+              <textarea name="description" rows="2"></textarea>
+            </label>
+            <div id="import-image-preview" class="import-image-preview" hidden>
+              <img id="import-image" alt="Recipe source preview" />
+              <div>
+                <span class="eyebrow">Source image found</span>
+                <p>We’ll keep this image attached to the recipe.</p>
+              </div>
+            </div>
+            <label>
+              Image URL <span class="label-hint">editable</span>
+              <input name="imageUrl" type="url" placeholder="No image found" />
+            </label>
+            <label>
+              Ingredient display
+              <select name="measurementMode">
+                <option value="both">Original + metric when available</option>
+                <option value="original">Original measurements only</option>
+                <option value="metric">Metric-first (best for baking)</option>
+              </select>
+            </label>
+            <div id="import-image-gallery" class="import-image-gallery" hidden></div>
+            <label>
+              Ingredients <span class="label-hint">metric-first where possible</span>
+              <textarea name="ingredients" rows="6"></textarea>
+            </label>
+            <label>
+              Method
+              <textarea name="instructions" rows="5"></textarea>
+            </label>
+            <div class="suggestion-box">
+              <div><span class="suggestion-spark">✦</span><strong>Suggested labels</strong></div>
+              <div id="suggested-tags" class="suggested-tags"></div>
+              <small>Suggestions are never final until you confirm them.</small>
+            </div>
+            <div id="dev-debug-panel" class="dev-debug-panel" hidden>
+              <div class="dev-debug-heading">
+                <span><span class="suggestion-spark">◌</span><strong>Dev capture</strong></span>
+                <button type="button" class="ghost-button" id="copy-import-debug">Copy debug packet</button>
+              </div>
+              <details>
+                <summary>View raw model response</summary>
+                <pre id="import-debug-output"></pre>
+              </details>
+              <small>Paste this packet into the conversation when we need to tune extraction or prompting.</small>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="ghost-button" id="back-to-import">← Start over</button>
+              <button type="submit" class="primary-button">Save clean recipe <span>↗</span></button>
+            </div>
+          </form>
+        </div>
+      </section>
+    </div>
+
+    <div id="filter-popover" class="filter-popover" hidden>
+      <p class="eyebrow">Filter by label</p>
+      <div id="filter-options"></div>
+    </div>
+
+    <div id="auth-modal" class="modal-backdrop" hidden>
+      <section class="modal auth-modal" aria-labelledby="auth-title">
+        <button class="modal-close" id="auth-close" aria-label="Close">×</button>
+        <p class="eyebrow">Private household archive</p>
+        <h2 id="auth-title">Sign in</h2>
+        <p id="auth-intro" class="modal-intro">Sign in to save recipes to your shared Kitchen Archive.</p>
+        <form id="auth-form">
+          <label>Email<input name="email" type="email" required autocomplete="email" /></label>
+          <label>Password<input name="password" type="password" required minlength="8" autocomplete="current-password" /></label>
+          <div id="signup-fields" hidden>
+            <label>Your name<input name="displayName" autocomplete="name" placeholder="e.g. Alex" /></label>
+            <label>Household name<input name="householdName" placeholder="e.g. The Kuang kitchen" /></label>
+          </div>
+          <p id="auth-error" class="auth-error" hidden></p>
+          <div class="form-actions">
+            <button type="button" class="ghost-button" id="auth-mode-toggle">Create account</button>
+            <button type="submit" class="primary-button" id="auth-submit">Sign in <span>↗</span></button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <div id="toast" class="toast" role="status"></div>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="supabase-config.js"></script>
+  <script src="app.js?v=20260828-llm-import"></script>
+  </body>
+</html>

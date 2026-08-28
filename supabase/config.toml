@@ -1,0 +1,4 @@
+project_id = "axajsafyosisflrjqpya"
+
+[functions.distill-recipe]
+verify_jwt = true
