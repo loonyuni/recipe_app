@@ -218,23 +218,39 @@ const cloud = {
   connected: false,
   authMode: "signin"
 };
-const localReviewers = ["Uni", "Alex"];
-const hiddenReviewers = new Set(["loonyuni"]);
+// Deployment-specific personalization. These are the only spots that carry
+// household-specific data (reviewer names, photo mappings), kept together so a
+// fork can point them at their own values without touching app logic.
+const personalConfig = {
+  // Reviewer names offered in the rating dropdown before any cloud members load.
+  localReviewers: ["Uni", "Alex"],
+  // Reviewer identifiers to hide from the rating UI (case-insensitive).
+  hiddenReviewers: ["loonyuni"],
+  // Personal photos attached by source URL and by normalized recipe title.
+  imagesBySourceUrl: {
+    "https://www.taste.com.au/recipes/one-pan-salmon-broccoli-bake/m8i624wf": [
+      "assets/recipes/one-pan-salmon-broccoli-bake/IMG_7622.JPG",
+      "assets/recipes/one-pan-salmon-broccoli-bake/IMG_7627.JPG",
+      "assets/recipes/one-pan-salmon-broccoli-bake/IMG_7628.JPG"
+    ]
+  },
+  imagesByTitle: {
+    "one-pan salmon and broccoli bake": [
+      "assets/recipes/one-pan-salmon-broccoli-bake/IMG_7622.JPG",
+      "assets/recipes/one-pan-salmon-broccoli-bake/IMG_7627.JPG",
+      "assets/recipes/one-pan-salmon-broccoli-bake/IMG_7628.JPG"
+    ],
+    "spicy basil chicken stir-fry": ["assets/recipes/basil-chicken-stir-fry/basil-chicken-stir-fry.png"]
+  }
+};
+const localReviewers = personalConfig.localReviewers;
+const hiddenReviewers = new Set(personalConfig.hiddenReviewers);
 
 const queryParams = new URLSearchParams(window.location.search);
 const devMode = queryParams.has("dev");
 const mockMode = queryParams.has("mock");
-const personalImageGallery = {
-  "https://www.taste.com.au/recipes/one-pan-salmon-broccoli-bake/m8i624wf": [
-    "assets/recipes/one-pan-salmon-broccoli-bake/IMG_7622.JPG",
-    "assets/recipes/one-pan-salmon-broccoli-bake/IMG_7627.JPG",
-    "assets/recipes/one-pan-salmon-broccoli-bake/IMG_7628.JPG"
-  ]
-};
-const personalImageGalleryByTitle = {
-  "one-pan salmon and broccoli bake": personalImageGallery["https://www.taste.com.au/recipes/one-pan-salmon-broccoli-bake/m8i624wf"],
-  "spicy basil chicken stir-fry": ["assets/recipes/basil-chicken-stir-fry/basil-chicken-stir-fry.png"]
-};
+const personalImageGallery = personalConfig.imagesBySourceUrl;
+const personalImageGalleryByTitle = personalConfig.imagesByTitle;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
