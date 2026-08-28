@@ -1,5 +1,63 @@
 const starterRecipes = [
   {
+    id: "basil-chicken-stir-fry",
+    title: "Spicy basil chicken stir-fry",
+    description: "A fast, savory ground-chicken stir-fry with shallots, basil, oyster sauce, and hot chili paste. Nutrition estimate includes a moderate serving of steamed rice.",
+    time: 25,
+    servings: 4,
+    tags: ["dinner", "weeknight dinner", "spicy", "quick", "hosting"],
+    imageClass: "new",
+    imageUrl: "assets/recipes/basil-chicken-stir-fry/basil-chicken-stir-fry.png",
+    imageUrls: ["assets/recipes/basil-chicken-stir-fry/basil-chicken-stir-fry.png"],
+    calories: 600,
+    protein: 27,
+    carbs: 65,
+    fat: 29,
+    rating: 0,
+    cooked: 0,
+    added: Date.now(),
+    measurementMode: "both",
+    ingredients: [
+      "1 lb (454 g) ground chicken",
+      "4 Tbsp (60 ml) vegetable oil, divided",
+      "½ tsp (about 2 g) baking soda",
+      "¼ tsp Diamond Crystal or Morton kosher salt, plus more",
+      "¼ cup (60 ml) oyster sauce",
+      "3 Tbsp (45 ml) hot chili paste, such as sambal oelek",
+      "1 Tbsp (15 ml) fish sauce",
+      "2 tsp (8 g) light or dark brown sugar",
+      "3 large shallots, thinly sliced",
+      "6 oz (170 g) holy basil or sweet basil leaves",
+      "Steamed rice and lime wedges, for serving"
+    ],
+    ingredientRecords: [
+      { original: "1 lb. ground chicken", metric: "454 g ground chicken", name: "ground chicken" },
+      { original: "4 Tbsp. vegetable oil, divided", metric: "60 ml vegetable oil, divided", name: "vegetable oil", preparation: "divided" },
+      { original: "½ tsp. baking soda", metric: "about 2 g baking soda", name: "baking soda" },
+      { original: "¼ tsp. Diamond Crystal or Morton kosher salt, plus more", metric: "about 1.5 g kosher salt, plus more", name: "kosher salt" },
+      { original: "¼ cup oyster sauce", metric: "60 ml oyster sauce", name: "oyster sauce" },
+      { original: "3 Tbsp. hot chili paste (such as sambal oelek)", metric: "45 ml hot chili paste", name: "hot chili paste" },
+      { original: "1 Tbsp. fish sauce", metric: "15 ml fish sauce", name: "fish sauce" },
+      { original: "2 tsp. light or dark brown sugar", metric: "8 g brown sugar", name: "brown sugar" },
+      { original: "3 large shallots, thinly sliced", metric: "3 large shallots, thinly sliced", name: "shallots", preparation: "thinly sliced" },
+      { original: "6 oz. holy basil or sweet basil leaves", metric: "170 g basil leaves", name: "basil leaves" },
+      { original: "Steamed rice and lime wedges (for serving)", metric: "", name: "steamed rice and lime wedges", preparation: "for serving" }
+    ],
+    instructions: [
+      "Vigorously stir the ground chicken, 1 Tbsp vegetable oil, baking soda, kosher salt, and 2 Tbsp water in a medium bowl until smooth and beginning to stick to the sides. Set aside.",
+      "Stir the oyster sauce, hot chili paste, fish sauce, and brown sugar in a small bowl. Set aside.",
+      "Heat the remaining 3 Tbsp vegetable oil in a large cast-iron or nonstick skillet over medium-high heat. Cook the shallots, stirring occasionally, until softened and golden in spots, about 4 minutes.",
+      "Add the chicken mixture and spread into an even layer. Cook undisturbed until beginning to set, about 4 minutes. Break up the meat, pour in the sauce mixture, and cook until most of the liquid evaporates and the sauce clings to the meat.",
+      "Add the basil and let it wilt slightly. Remove from the heat and toss until completely wilted. Taste and add salt if needed.",
+      "Serve the stir-fry with steamed rice and lime wedges."
+    ],
+    variants: [],
+    ratings: [],
+    source: "Codex import · pasted recipe",
+    sourceUrl: "",
+    localOnly: true
+  },
+  {
     id: "tomato-pasta",
     title: "Tomato pasta with crispy breadcrumbs",
     description: "A weeknight bowl with enough character to serve to friends.",
@@ -127,8 +185,21 @@ const starterRecipes = [
   }
 ];
 
+const storedRecipes = JSON.parse(localStorage.getItem("kitchen-archive-recipes") || "null");
+const codexSeedKey = "kitchen-archive-codex-basil-chicken-v1";
+const basilChickenSeed = starterRecipes.find((recipe) => recipe.id === "basil-chicken-stir-fry");
+const seededRecipes = storedRecipes
+  ? [
+      ...storedRecipes.map((recipe) => recipe.id === basilChickenSeed.id
+        ? { ...recipe, imageUrl: basilChickenSeed.imageUrl, imageUrls: basilChickenSeed.imageUrls, localOnly: true }
+        : recipe),
+      ...starterRecipes.filter((recipe) => recipe.id === basilChickenSeed.id && !storedRecipes.some((item) => item.id === recipe.id))
+    ]
+  : starterRecipes;
+if (storedRecipes && !localStorage.getItem(codexSeedKey)) localStorage.setItem(codexSeedKey, "added");
+
 const state = {
-  recipes: JSON.parse(localStorage.getItem("kitchen-archive-recipes") || "null") || starterRecipes,
+  recipes: seededRecipes,
   selectedTags: [],
   search: "",
   sort: "recent",
@@ -161,7 +232,8 @@ const personalImageGallery = {
   ]
 };
 const personalImageGalleryByTitle = {
-  "one-pan salmon and broccoli bake": personalImageGallery["https://www.taste.com.au/recipes/one-pan-salmon-broccoli-bake/m8i624wf"]
+  "one-pan salmon and broccoli bake": personalImageGallery["https://www.taste.com.au/recipes/one-pan-salmon-broccoli-bake/m8i624wf"],
+  "spicy basil chicken stir-fry": ["assets/recipes/basil-chicken-stir-fry/basil-chicken-stir-fry.png"]
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -330,6 +402,7 @@ function recipeFromRow(row) {
 
 async function loadCloudRecipes() {
   if (!cloud.client || !cloud.session) return;
+  const localCodexRecipes = state.recipes.filter((recipe) => recipe.localOnly);
   const { data: membership, error: memberError } = await cloud.client
     .from("household_members")
     .select("id, household_id")
@@ -357,6 +430,20 @@ async function loadCloudRecipes() {
     .order("updated_at", { ascending: false });
   if (error) throw error;
   state.recipes = (data || []).map(recipeFromRow);
+  cloud.connected = true;
+
+  for (const localRecipe of localCodexRecipes) {
+    const duplicate = state.recipes.find((recipe) => normalizeRecipeTitle(recipe.title) === normalizeRecipeTitle(localRecipe.title));
+    if (duplicate) continue;
+    const pendingRecipe = { ...localRecipe };
+    try {
+      await saveRecipeToCloud(pendingRecipe);
+      pendingRecipe.localOnly = false;
+    } catch (syncError) {
+      console.warn("Codex recipe cloud sync skipped:", syncError.message);
+    }
+    state.recipes.unshift(pendingRecipe);
+  }
   await Promise.all(state.recipes
     .filter((recipe) => recipe.imageUrls?.length)
     .map(async (recipe) => {
@@ -391,7 +478,6 @@ async function loadCloudRecipes() {
       recipe.ratings = [...cloudRatings, ...localRatings.filter((rating) => !cloudMembers.has(rating.member))];
     });
   }
-  cloud.connected = true;
   render();
 }
 
