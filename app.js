@@ -239,6 +239,26 @@ const personalImageGalleryByTitle = {
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
+// Escape untrusted values before interpolating into innerHTML. Recipes are
+// imported from arbitrary URLs and shared across household members, so titles,
+// descriptions, ingredients, reviewer names, image URLs, etc. must never be
+// treated as trusted HTML.
+function esc(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[char]);
+}
+
+// Escape a value for use inside an HTML attribute that is itself wrapped in
+// double quotes (e.g. src="..."), so it can't break out of the attribute.
+function escAttr(value) {
+  return esc(value);
+}
+
 function formatPart(value) {
   if (typeof value === "string" || typeof value === "number") return String(value);
   if (!value || typeof value !== "object") return "";
@@ -335,6 +355,22 @@ function formatTime(value) {
   const cook = value.cook ?? value.cook_time ?? value.cooking_time;
   if (prep || cook) return [prep && `Prep ${formatPart(prep)}`, cook && `Cook ${formatPart(cook)}`].filter(Boolean).join(" · ");
   return Object.entries(value).map(([key, item]) => `${key}: ${formatTime(item)}`).join(" · ");
+}
+
+// Recipe `time` can be a number of minutes (starter/manual recipes) or a
+// human string like "45 min" (cloud/imported recipes). These helpers give a
+// single display string and a single numeric value for sorting.
+function timeMinutes(value) {
+  if (typeof value === "number") return value;
+  const match = String(value ?? "").match(/\d+/);
+  return match ? Number(match[0]) : 0;
+}
+
+function formatTimeLabel(value) {
+  if (typeof value === "number") return `${value} min`;
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  return /[a-z]/i.test(text) ? text : `${text} min`;
 }
 
 function normalizeDraft(draft) {
@@ -689,8 +725,8 @@ function ratingStars(score) {
 
 function renderLabels() {
   $("#label-list").innerHTML = allTags().slice(0, 12).map((tag) => `
-    <div class="label-item" data-tag="${tag}">
-      <span class="label-dot"></span><span>${tag}</span>
+    <div class="label-item" data-tag="${escAttr(tag)}">
+      <span class="label-dot"></span><span>${esc(tag)}</span>
       <span class="label-count">${state.recipes.filter((recipe) => recipe.tags.includes(tag)).length}</span>
     </div>`).join("");
   $$(".label-item").forEach((item) => item.addEventListener("click", () => toggleTag(item.dataset.tag)));
@@ -727,7 +763,7 @@ function filteredRecipes() {
   }
   if (state.sort === "rating") recipes.sort((a, b) => averageRating(b) - averageRating(a));
   if (state.sort === "title") recipes.sort((a, b) => a.title.localeCompare(b.title));
-  if (state.sort === "time") recipes.sort((a, b) => a.time - b.time);
+  if (state.sort === "time") recipes.sort((a, b) => timeMinutes(a.time) - timeMinutes(b.time));
   if (state.sort === "recent") recipes.sort((a, b) => b.added - a.added);
   return recipes;
 }
@@ -737,18 +773,18 @@ function renderRecipes() {
   $("#recipe-count").textContent = recipes.length;
   $("#result-count").textContent = state.search || state.selectedTags.length ? `${recipes.length} matches` : "";
   $("#recipe-grid").innerHTML = recipes.map((recipe) => `
-    <article class="recipe-card" data-id="${recipe.id}" tabindex="0">
-      <div class="recipe-card__image recipe-card__image--${recipe.imageClass}" aria-label="${recipe.title}">
+    <article class="recipe-card" data-id="${escAttr(recipe.id)}" tabindex="0">
+      <div class="recipe-card__image recipe-card__image--${escAttr(recipe.imageClass)}" aria-label="${escAttr(recipe.title)}">
         ${recipeImageUrls(recipe).length
-          ? `<img src="${recipeImageUrls(recipe).at(-1)}" alt="${recipe.title}" />`
-          : `<span>${recipe.title.split(" ").slice(0, 2).join(" ")}</span>`}
+          ? `<img src="${escAttr(recipeImageUrls(recipe).at(-1))}" alt="${escAttr(recipe.title)}" />`
+          : `<span>${esc(recipe.title.split(" ").slice(0, 2).join(" "))}</span>`}
       </div>
       <div class="recipe-card__body">
-        <h3>${recipe.title}</h3>
-        <p>${recipe.description}</p>
-        <div class="card-meta"><span>◷ ${recipe.time} min</span><span>♧ ${recipe.servings} servings</span></div>
+        <h3>${esc(recipe.title)}</h3>
+        <p>${esc(recipe.description)}</p>
+        <div class="card-meta"><span>◷ ${esc(formatTimeLabel(recipe.time))}</span><span>♧ ${esc(recipe.servings)} servings</span></div>
         <div class="card-footer">
-          <div class="card-tags">${recipe.tags.slice(0, 2).map((tag) => `<span class="card-tag">${tag}</span>`).join("")}</div>
+          <div class="card-tags">${recipe.tags.slice(0, 2).map((tag) => `<span class="card-tag">${esc(tag)}</span>`).join("")}</div>
           <span class="card-rating">★ ${averageRating(recipe).toFixed(1)}</span>
         </div>
       </div>
@@ -762,7 +798,7 @@ function renderRecipes() {
 
 function renderFilters() {
   $("#active-filters").innerHTML = state.selectedTags.map((tag) => `
-    <span class="filter-chip">${tag}<button aria-label="Remove ${tag}" data-remove-tag="${tag}">×</button></span>`).join("");
+    <span class="filter-chip">${esc(tag)}<button aria-label="Remove ${escAttr(tag)}" data-remove-tag="${escAttr(tag)}">×</button></span>`).join("");
   $$("[data-remove-tag]").forEach((button) => button.addEventListener("click", () => toggleTag(button.dataset.removeTag)));
 }
 
@@ -793,40 +829,40 @@ function openDrawer(id) {
     ...ratings.map((rating) => rating.member)
   ])].filter((member) => !hiddenReviewers.has(String(member).trim().toLowerCase()));
   $("#drawer-content").innerHTML = `
-    <p class="eyebrow">Recipe archive · ${recipe.source || "Personal recipe"}</p>
-    <h2 class="drawer-title" id="drawer-title">${recipe.title}</h2>
-    <p class="drawer-description">${recipe.description}</p>
+    <p class="eyebrow">Recipe archive · ${esc(recipe.source || "Personal recipe")}</p>
+    <h2 class="drawer-title" id="drawer-title">${esc(recipe.title)}</h2>
+    <p class="drawer-description">${esc(recipe.description)}</p>
     <div class="drawer-actions">
       <button class="ghost-button" id="edit-recipe-button">Edit recipe</button>
       <button class="danger-button" id="delete-recipe-button">Delete</button>
     </div>
     ${recipeImageUrls(recipe).length ? `
       <div class="drawer-image-gallery">
-        ${recipeImageUrls(recipe).map((imageUrl, index) => `<img src="${imageUrl}" alt="${recipe.title} photo ${index + 1}" />`).join("")}
+        ${recipeImageUrls(recipe).map((imageUrl, index) => `<img src="${escAttr(imageUrl)}" alt="${escAttr(recipe.title)} photo ${index + 1}" />`).join("")}
       </div>
     ` : ""}
-    <div class="drawer-tags">${recipe.tags.map((tag) => `<span class="drawer-tag">${tag}</span>`).join("")}</div>
-    <div class="card-meta"><span>◷ ${recipe.time} min</span><span>♧ ${recipe.servings} servings</span><span>★ ${averageRating(recipe).toFixed(1)} household</span></div>
+    <div class="drawer-tags">${recipe.tags.map((tag) => `<span class="drawer-tag">${esc(tag)}</span>`).join("")}</div>
+    <div class="card-meta"><span>◷ ${esc(formatTimeLabel(recipe.time))}</span><span>♧ ${esc(recipe.servings)} servings</span><span>★ ${averageRating(recipe).toFixed(1)} household</span></div>
     <hr class="drawer-rule" />
     <h3 class="drawer-section-title">Nutrition per serving</h3>
     <div class="nutrition-strip">
-      <div class="nutrition-cell"><span class="nutrition-value">${recipe.calories}</span><span class="nutrition-label">kcal</span></div>
-      <div class="nutrition-cell"><span class="nutrition-value">${recipe.protein} g</span><span class="nutrition-label">protein</span></div>
-      <div class="nutrition-cell"><span class="nutrition-value">${recipe.carbs} g</span><span class="nutrition-label">carbs</span></div>
-      <div class="nutrition-cell"><span class="nutrition-value">${recipe.fat} g</span><span class="nutrition-label">fat</span></div>
+      <div class="nutrition-cell"><span class="nutrition-value">${esc(recipe.calories)}</span><span class="nutrition-label">kcal</span></div>
+      <div class="nutrition-cell"><span class="nutrition-value">${esc(recipe.protein)} g</span><span class="nutrition-label">protein</span></div>
+      <div class="nutrition-cell"><span class="nutrition-value">${esc(recipe.carbs)} g</span><span class="nutrition-label">carbs</span></div>
+      <div class="nutrition-cell"><span class="nutrition-value">${esc(recipe.fat)} g</span><span class="nutrition-label">fat</span></div>
     </div>
     <p class="source-line">Nutrition is an estimate · <strong>medium confidence</strong></p>
     <hr class="drawer-rule" />
     <h3 class="drawer-section-title">Ingredients</h3>
-    <ul class="ingredient-list">${recipe.ingredients.map((ingredient) => `<li>${ingredient}</li>`).join("")}</ul>
+    <ul class="ingredient-list">${recipe.ingredients.map((ingredient) => `<li>${esc(ingredient)}</li>`).join("")}</ul>
     <h3 class="drawer-section-title">Method</h3>
-    <ol class="instruction-list">${recipe.instructions.map((step) => `<li>${step}</li>`).join("")}</ol>
+    <ol class="instruction-list">${recipe.instructions.map((step) => `<li>${esc(step)}</li>`).join("")}</ol>
     <hr class="drawer-rule" />
     <h3 class="drawer-section-title">Family ratings · ★ ${averageRating(recipe).toFixed(1)} overall</h3>
     <div class="family-rating">${ratings.map((rating) => `
-      <div class="member-rating"><span class="member-name">${rating.member}</span><span class="stars">${ratingStars(rating.score)}</span><span class="member-score">${rating.score.toFixed(1)}</span></div>`).join("")}</div>
+      <div class="member-rating"><span class="member-name">${esc(rating.member)}</span><span class="stars">${ratingStars(rating.score)}</span><span class="member-score">${(Number(rating.score) || 0).toFixed(1)}</span></div>`).join("")}</div>
     <form id="rating-form" class="rating-form">
-      <select name="member" aria-label="Reviewer">${reviewers.map((member) => `<option>${member}</option>`).join("")}</select>
+      <select name="member" aria-label="Reviewer">${reviewers.map((member) => `<option>${esc(member)}</option>`).join("")}</select>
       <div class="star-rating" id="rating-stars" role="radiogroup" aria-label="Rating">
         ${[1, 2, 3, 4, 5].map((star) => `
           <span class="star-pair" data-star="${star}">
@@ -841,7 +877,7 @@ function openDrawer(id) {
     </form>
     <hr class="drawer-rule" />
     <h3 class="drawer-section-title">Your versions</h3>
-    ${recipe.variants.map((variant) => `<div class="variant-card"><strong>${variant.name}</strong><p>${variant.note}</p></div>`).join("")}
+    ${recipe.variants.map((variant) => `<div class="variant-card"><strong>${esc(variant.name)}</strong><p>${esc(variant.note)}</p></div>`).join("")}
     <button class="ghost-button" style="margin-top:14px" id="add-variant-button">＋ Add a variant</button>`;
   $("#recipe-drawer").hidden = false;
   $("#edit-recipe-button").addEventListener("click", () => openEditModal(recipe));
@@ -1033,7 +1069,7 @@ function renderSuggestedTags(draft) {
   ].filter(Boolean);
   const uniqueSuggestions = [...new Set(suggestions)];
   $("#suggested-tags").innerHTML = (uniqueSuggestions.length ? uniqueSuggestions : ["new recipe"]).map((tag) => `
-    <button type="button" class="suggested-tag is-selected" data-suggested-tag="${tag}">${tag} ✓</button>`).join("");
+    <button type="button" class="suggested-tag is-selected" data-suggested-tag="${escAttr(tag)}">${esc(tag)} ✓</button>`).join("");
   $$("[data-suggested-tag]").forEach((button) => button.addEventListener("click", () => {
     button.classList.toggle("is-selected");
     button.textContent = button.classList.contains("is-selected") ? `${button.dataset.suggestedTag} ✓` : button.dataset.suggestedTag;
@@ -1111,7 +1147,7 @@ async function showImportReview() {
     $("#import-image-preview").hidden = !draft.imageUrl;
     if (draft.imageUrl) $("#import-image").src = draft.imageUrl;
     const gallery = $("#import-image-gallery");
-    gallery.innerHTML = (draft.imageUrls || []).map((imageUrl) => `<img src="${imageUrl}" alt="Imported recipe photo" />`).join("");
+    gallery.innerHTML = (draft.imageUrls || []).map((imageUrl) => `<img src="${escAttr(imageUrl)}" alt="Imported recipe photo" />`).join("");
     gallery.hidden = !(draft.imageUrls || []).length;
     renderSuggestedTags(draft);
     renderImportDebug();
@@ -1140,7 +1176,7 @@ function openFilterPopover() {
   const popover = $("#filter-popover");
   popover.style.top = `${rect.bottom + 8}px`;
   popover.style.left = `${Math.min(rect.left, window.innerWidth - 240)}px`;
-  $("#filter-options").innerHTML = allTags().map((tag) => `<button data-filter-tag="${tag}">${state.selectedTags.includes(tag) ? "✓ " : ""}${tag}</button>`).join("");
+  $("#filter-options").innerHTML = allTags().map((tag) => `<button data-filter-tag="${escAttr(tag)}">${state.selectedTags.includes(tag) ? "✓ " : ""}${esc(tag)}</button>`).join("");
   $$("[data-filter-tag]").forEach((item) => item.addEventListener("click", () => { toggleTag(item.dataset.filterTag); openFilterPopover(); }));
   popover.hidden = false;
 }
