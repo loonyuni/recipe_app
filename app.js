@@ -415,7 +415,18 @@ function recipeFromRow(row) {
   };
 }
 
-async function loadCloudRecipes() {
+// Both onAuthStateChange (INITIAL_SESSION) and getSession() trigger a load on
+// startup. Coalesce concurrent calls onto a single in-flight promise so the
+// tables aren't double-fetched and createHousehold can't fire twice (which
+// would create duplicate households for a brand-new user).
+let cloudLoadInFlight = null;
+function loadCloudRecipes() {
+  if (cloudLoadInFlight) return cloudLoadInFlight;
+  cloudLoadInFlight = loadCloudRecipesInner().finally(() => { cloudLoadInFlight = null; });
+  return cloudLoadInFlight;
+}
+
+async function loadCloudRecipesInner() {
   if (!cloud.client || !cloud.session) return;
   const localCodexRecipes = state.recipes.filter((recipe) => recipe.localOnly);
   const { data: membership, error: memberError } = await cloud.client
@@ -720,11 +731,16 @@ async function persistNewRecipe(recipe) {
     openDrawer(duplicate.id);
     return;
   }
+  // Mark as local-only until a cloud insert confirms; loadCloudRecipes re-uploads
+  // anything still flagged so recipes added offline (or when the cloud write
+  // fails) aren't dropped when state.recipes is rebuilt from the cloud on reload.
+  recipe.localOnly = true;
   state.recipes.unshift(recipe);
   saveRecipes();
   if (cloud.connected) {
     try {
       await saveRecipeToCloud(recipe);
+      recipe.localOnly = false;
       saveRecipes();
     } catch (error) {
       console.error(error);
@@ -765,7 +781,16 @@ async function initSupabase() {
         showToast(`Recipes couldn't be loaded: ${error.message || "unknown error"}`);
       }
     } else {
+      // On sign-out, drop the household's private data so it isn't left on
+      // screen or in localStorage for the next person on this device. Reset to
+      // the seeded starter recipes a signed-out visitor would normally see.
       cloud.connected = false;
+      cloud.householdId = null;
+      cloud.memberId = null;
+      cloud.members = [];
+      state.recipes = starterRecipes.map((recipe) => ({ ...recipe }));
+      saveRecipes();
+      render();
     }
   });
   const { data, error } = await cloud.client.auth.getSession();

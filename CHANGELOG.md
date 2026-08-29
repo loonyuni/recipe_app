@@ -50,6 +50,41 @@ normally have asked), the change, and how it was verified.
 - **Files:** `app.js` (`saveRatingToCloud`, `removeManualRating`, submit handler).
 - **Verification:** _pending live test: save a rating, reload, confirm it sticks._
 
+### 3. Local-only recipes silently lost on reload / sign-in (DATA LOSS)
+
+- **Found by:** static review sweep of the persistence paths.
+- **Root cause:** `loadCloudRecipes` rebuilds `state.recipes` from cloud rows and
+  only preserves entries flagged `localOnly === true`. But nothing ever *set*
+  `localOnly = true` — it was only read and set to `false` — so the
+  reconciliation/re-upload loop was dead code. A recipe added while signed out,
+  or whose cloud save failed, was dropped on the next reload and then erased
+  from localStorage on the following `saveRecipes()`.
+- **Decision:** Set `recipe.localOnly = true` in `persistNewRecipe` before the
+  cloud insert; clear it to `false` on success. The existing loop then
+  re-uploads anything still flagged.
+- **Files:** `app.js` (`persistNewRecipe`).
+
+### 4. Sign-out left the previous household's recipes on screen & in localStorage
+
+- **Found by:** static review sweep.
+- **Root cause:** the `onAuthStateChange` sign-out branch only set
+  `cloud.connected = false` — it didn't clear household/member state, reset
+  `state.recipes`, or re-render. Private recipes stayed visible and cached for
+  the next person on the device.
+- **Decision:** On sign-out, clear `householdId`/`memberId`/`members`, reset
+  `state.recipes` to the seeded starters, persist, and re-render.
+- **Files:** `app.js` (`onAuthStateChange`).
+
+### 5. Duplicate cloud load on startup could create duplicate households
+
+- **Found by:** static review sweep.
+- **Root cause:** both `onAuthStateChange` (INITIAL_SESSION) and `getSession()`
+  call `loadCloudRecipes` on startup, concurrently. For a brand-new user with
+  no membership row, both could call `createHousehold`, double-firing the RPC.
+- **Decision:** Coalesce concurrent calls onto a single in-flight promise
+  (`loadCloudRecipes` wrapper around `loadCloudRecipesInner`).
+- **Files:** `app.js`. Verified with a Node concurrency-guard test.
+
 ---
 
 ## Notes / caveats

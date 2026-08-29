@@ -9,8 +9,8 @@ Legend: ✅ verified · ⚠️ bug found · ⏳ pending · 🔍 needs signed-in 
 ## Auth & session
 - **US-1** As a household member, I can sign in with email/password. — ✅ (login works)
 - **US-2** My session persists per device so I stay logged in. — 🔍
-- **US-3** I can create a new household account (sign-up). — 🔍
-- **US-4** I can sign out. — 🔍
+- **US-3** I can create a new household account (sign-up). — ⚠️ (double-load could create duplicate households; fixed)
+- **US-4** I can sign out. — ⚠️ (left prev household's recipes on screen/localStorage; fixed)
 
 ## Recipes — browse & view
 - **US-5** I see all my household recipes in a grid. — ✅
@@ -20,10 +20,10 @@ Legend: ✅ verified · ⚠️ bug found · ⏳ pending · 🔍 needs signed-in 
 - **US-9** I can filter to Family favorites (avg ≥ 4.5) and Recently cooked. — ⏳
 
 ## Recipes — create & edit
-- **US-10** I can add a recipe manually. — ⏳
+- **US-10** I can add a recipe manually. — ⚠️ (local-only recipes lost on reload; fixed)
 - **US-11** I can import/distill a recipe from URL or pasted text/PDF. — 🔍
-- **US-12** I can edit an existing recipe. — ⏳
-- **US-13** I can delete a recipe. — ⏳
+- **US-12** I can edit an existing recipe. — ✅ (traced: memory + cloud + localStorage consistent)
+- **US-13** I can delete a recipe. — ✅ (traced: cloud-first, then local + memory)
 
 ## Nutrition
 - **US-14** Each recipe shows per-serving macros. — ⚠️ (imported recipes had 0; fixed + backfill added)
