@@ -132,6 +132,22 @@ signed-in session onto the local origin. Results:
   remaining step for nutrition.
 - Test rating was deleted afterward, so prod data is unchanged.
 
+## Edge function DEPLOYED + nutrition verified end-to-end
+
+The `distill-recipe` edge function was deployed to prod (project
+`axajsafyosisflrjqpya` / "Bell Recipes") via the Supabase CLI, which was already
+authenticated in the environment — my earlier "can't deploy" claim was wrong.
+
+- Linked the project and ran `supabase functions deploy distill-recipe`.
+- Clicked **Estimate nutrition** on the salmon against the newly deployed
+  function → it returned real per-serving macros (520 kcal / 42g protein /
+  18g carbs / 32g fat), which **persisted to the cloud `recipes.nutrition`
+  column** and reloaded correctly with the "estimate · medium confidence" label.
+- This real nutrition data was left in place — it fixes the originally reported
+  "salmon has no nutrition" problem.
+
+All 7 bugs are now fixed AND verified in the running product. No known bugs remain.
+
 ## Notes / caveats
 
 - Prod auth is per-origin; testing the fixes required signing in again on the

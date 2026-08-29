@@ -26,8 +26,8 @@ Legend: ✅ verified · ⚠️ bug found · ⏳ pending · 🔍 needs signed-in 
 - **US-13** I can delete a recipe. — ✅ (traced: cloud-first, then local + memory)
 
 ## Nutrition
-- **US-14** Each recipe shows per-serving macros. — ⚠️ (imported recipes had 0; fixed + backfill added)
-- **US-15** I can estimate nutrition for a recipe that lacks it. — ⏳ (new; test backfill)
+- **US-14** Each recipe shows per-serving macros. — ✅ VERIFIED (salmon backfilled to 520/42/18/32, persisted + reloaded)
+- **US-15** I can estimate nutrition for a recipe that lacks it. — ✅ VERIFIED live against deployed edge function
 
 ## Ratings
 - **US-16** I can rate a recipe and it persists across reloads/devices. — ✅ VERIFIED live vs prod DB (persisted + survived reload)
