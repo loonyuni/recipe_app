@@ -35,11 +35,13 @@ Legend: ✅ verified · ⚠️ bug found · ⏳ pending · 🔍 needs signed-in 
 - **US-18** Average rating drives Family favorites + Highest-rated sort. — ⏳
 
 ## Labels / tags
-- **US-19** I can add, rename, delete labels. — ⏳
-- **US-20** I can filter recipes by clicking a label. — ⏳
-- **US-21** I can merge/audit labels. — ⏳
-- **US-22** I can clear all active filters. — ⏳
+- **US-19** I can add, rename, delete labels. — ✅ happy-path traced; ⚠️ failed cloud sync was silent (fixed)
+- **US-20** I can filter recipes by clicking a label. — ✅ (in-memory view state; traced)
+- **US-21** I can merge/audit labels. — ✅ (traced: dedup + reconciliation correct)
+- **US-22** I can clear all active filters. — ✅ (verified via Playwright + trace)
 
 ## Persistence (cross-cutting)
 - **US-23** All create/edit/rate/label actions persist to the cloud and survive
-  reload on any device. — ⚠️ (ratings were the known gap; sweep the rest)
+  reload on any device. — ⚠️ 6 bugs found & fixed (ratings, imports nutrition,
+  local-only recipe loss, sign-out leak, double-load, silent label/edit sync
+  failures). Live signed-in confirmation delegated to user (PR #1 checklist).

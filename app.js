@@ -1038,13 +1038,18 @@ async function persistTagChanges(changedRecipes) {
   }
   render();
   if (!cloud.connected) return;
+  let failed = 0;
   for (const recipe of changedRecipes) {
     try {
       await updateRecipeToCloud(recipe);
     } catch (error) {
+      failed += 1;
       console.warn("Label sync skipped:", error.message);
     }
   }
+  // Surface a failed cloud sync instead of swallowing it: tags are rebuilt from
+  // the cloud on reload, so a silent failure would quietly revert the change.
+  if (failed) showToast(`Label saved locally; cloud sync failed for ${failed} recipe${failed === 1 ? "" : "s"}.`);
 }
 
 // Rename a label everywhere. If the new name already exists on some recipes the
@@ -1560,10 +1565,13 @@ $("#add-label-button").addEventListener("click", async () => {
   render();
   try {
     await updateRecipeToCloud(recipe);
+    showToast(`Added “${tag}” to ${recipe.title}.`);
   } catch (error) {
+    // Don't claim success on a failed cloud write — tags are rebuilt from the
+    // cloud on reload, so the label would silently disappear.
     console.warn("Label cloud sync skipped:", error.message);
+    showToast(`Added “${tag}” locally; cloud sync failed.`);
   }
-  showToast(`Added “${tag}” to ${recipe.title}.`);
 });
 $("#clear-filters-button").addEventListener("click", clearFilters);
 $("#manage-labels-button").addEventListener("click", openLabelManager);
@@ -1629,9 +1637,15 @@ $("#recipe-form").addEventListener("submit", (event) => {
       instructions: instructions.length ? instructions : ["Add cooking instructions when you are ready."]
     });
     closeModal();
+    // Persist locally and refresh the UI first so the edit survives even if the
+    // cloud write fails (otherwise it lived only in memory and reverted on
+    // reload). Then attempt the cloud sync and report only its outcome.
+    saveRecipes();
+    render();
+    openDrawer(recipe.id);
     updateRecipeToCloud(recipe)
-      .then(() => { saveRecipes(); render(); openDrawer(recipe.id); showToast("Recipe updated."); })
-      .catch((error) => showToast(`Update failed: ${error.message || "try again"}`));
+      .then(() => showToast("Recipe updated."))
+      .catch((error) => showToast(`Updated locally; cloud sync failed: ${error.message || "try again"}`));
     return;
   }
   const recipe = {

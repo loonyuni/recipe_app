@@ -85,6 +85,21 @@ normally have asked), the change, and how it was verified.
   (`loadCloudRecipes` wrapper around `loadCloudRecipesInner`).
 - **Files:** `app.js`. Verified with a Node concurrency-guard test.
 
+### 6. Failed label/edit cloud writes were silently swallowed (revert on reload)
+
+- **Found by:** static review sweep of label management + edit paths.
+- **Root cause:** label sync (`persistTagChanges`, add-label handler) caught cloud
+  failures with only `console.warn` and still showed a success toast; the
+  edit-recipe handler only called `saveRecipes()`/`render()` inside `.then()`, so
+  a cloud failure left the edit in memory only. Since tags/recipes are rebuilt
+  from the cloud on reload, all of these silently reverted with no user signal.
+- **Decision:** Surface failures with a "saved locally; cloud sync failed" toast
+  (matching the ratings pattern), and persist the edit to localStorage + re-render
+  before the cloud call so it survives a failed sync.
+- **Files:** `app.js` (`persistTagChanges`, add-label handler, edit-form submit).
+- **Note:** The label happy-path (add/rename/delete/merge/filter/clear) was traced
+  end-to-end and is correct; this was the only real issue found there.
+
 ---
 
 ## Notes / caveats
