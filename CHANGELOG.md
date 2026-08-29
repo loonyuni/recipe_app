@@ -102,6 +102,36 @@ normally have asked), the change, and how it was verified.
 
 ---
 
+### 7. Stale-cache: version query string wasn't bumped (fixes wouldn't ship)
+
+- **Found by:** noticing `app.js?v=20260828-llm-import` in the runtime stack trace.
+- **Root cause:** `index.html` loads `app.js`/`styles.css` with a `?v=` cache-buster.
+  Browsers cache by full URL, so returning users would keep the OLD cached files
+  after this PR merged — the fixes would never reach them (same stale-cache class
+  as the original mobile-login report).
+- **Decision:** bump both to `?v=20260829-qa-persistence`.
+- **Files:** `index.html`.
+
+## Verification (live, against prod Supabase)
+
+Ran the fixed build locally against the real prod Supabase backend by copying the
+signed-in session onto the local origin. Results:
+
+- **Ratings fix — VERIFIED end-to-end:** submitted a rating as the "Uni" alias →
+  it persisted to the cloud `ratings` table (attributed to member `loonyuni`),
+  survived a full page reload (salmon card + drawer show ★4.0), and re-rating
+  updated the single row to 5 rather than creating a duplicate (DB row count
+  stayed at 1). This is the exact bug originally reported.
+- **Nutrition empty-state — VERIFIED:** the salmon drawer now shows "Nutrition
+  hasn't been calculated for this recipe yet." with an Estimate button, instead
+  of misleading zeros.
+- **Nutrition backfill wiring — VERIFIED (fails safe):** clicking Estimate calls
+  the distill function; because the edge function isn't deployed yet it returns
+  no nutrition, and the client correctly showed "Couldn't estimate nutrition: no
+  values returned" instead of storing zeros. Confirms the deploy is the only
+  remaining step for nutrition.
+- Test rating was deleted afterward, so prod data is unchanged.
+
 ## Notes / caveats
 
 - Prod auth is per-origin; testing the fixes required signing in again on the

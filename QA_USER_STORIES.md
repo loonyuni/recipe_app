@@ -30,9 +30,9 @@ Legend: ✅ verified · ⚠️ bug found · ⏳ pending · 🔍 needs signed-in 
 - **US-15** I can estimate nutrition for a recipe that lacks it. — ⏳ (new; test backfill)
 
 ## Ratings
-- **US-16** I can rate a recipe and it persists across reloads/devices. — ⚠️ (never synced to cloud; fixed)
-- **US-17** Re-rating updates my existing rating rather than duplicating. — ⏳ (fixed; verify no dupes)
-- **US-18** Average rating drives Family favorites + Highest-rated sort. — ⏳
+- **US-16** I can rate a recipe and it persists across reloads/devices. — ✅ VERIFIED live vs prod DB (persisted + survived reload)
+- **US-17** Re-rating updates my existing rating rather than duplicating. — ✅ VERIFIED live (DB row count stayed at 1)
+- **US-18** Average rating drives Family favorites + Highest-rated sort. — ✅ (verified via Playwright on seeded data)
 
 ## Labels / tags
 - **US-19** I can add, rename, delete labels. — ✅ happy-path traced; ⚠️ failed cloud sync was silent (fixed)
