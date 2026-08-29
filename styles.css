@@ -99,12 +99,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 h1, h2, h3, p { margin-top: 0; }
 h1 { max-width: 550px; margin-bottom: 20px; font: 500 clamp(54px, 7vw, 94px)/.87 var(--display); letter-spacing: -.07em; }
 h1 em { color: var(--red); font-weight: 500; }
-.hero-copy { max-width: 350px; color: var(--muted); line-height: 1.7; }
-.hero-doodle { width: 140px; height: 130px; position: relative; margin: 20px 9% 0 0; color: var(--red); }
-.doodle-line { position: absolute; display: block; width: 88px; border-top: 1px solid currentColor; transform-origin: left; }
-.doodle-line--one { top: 25px; left: 19px; transform: rotate(24deg); }
-.doodle-line--two { top: 46px; left: 35px; transform: rotate(-23deg); }
-.doodle-leaf { position: absolute; top: 52px; left: 63px; font-size: 68px; transform: rotate(-38deg); }
 
 .search-section { max-width: 950px; padding-bottom: 61px; }
 .search-box { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--white); border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 9px 22px rgba(58,43,24,.04); }
@@ -270,17 +264,19 @@ h2 span { color: var(--muted); font: 400 11px var(--mono); vertical-align: middl
   .sidebar { width: 205px; }
   .main { width: calc(100% - 205px); margin-left: 205px; padding: 0 4vw 60px; }
   .recipe-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .hero-doodle { margin-right: 0; }
 }
 @media (max-width: 680px) {
   .sidebar { display: none; }
   .main { width: 100%; margin-left: 0; padding: 0 20px 55px; }
-  .topbar { min-height: 68px; justify-content: space-between; }
+  /* Let the header wrap so the brand sits on top and the action buttons —
+     Sign in, Import, Add recipe — flow onto their own row and stay reachable
+     on narrow screens instead of being hidden. */
+  .topbar { min-height: 68px; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding: 12px 0; }
   .mobile-brand { display: flex; align-items: center; gap: 7px; font: 500 18px var(--display); }
-  .mobile-brand .brand-mark { font-size: 19px; }
-  .topbar-actions .ghost-button { display: none; }
+  .topbar-actions { flex: 1 1 100%; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+  .topbar-actions .ghost-button,
+  .topbar-actions .primary-button { padding: 9px 12px; font-size: 12px; }
   .hero { padding: 60px 0 54px; }
-  .hero-doodle { display: none; }
   h1 { font-size: 67px; }
   .search-section { padding-bottom: 41px; }
   .search-box kbd { display: none; }

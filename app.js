@@ -635,7 +635,7 @@ function setAuthMode(mode) {
   $("#auth-title").textContent = signup ? "Create your archive" : "Sign in";
   $("#auth-intro").textContent = signup
     ? "Create the household account that will own your shared recipe library."
-    : "Sign in to save recipes to your shared Kitchen Archive.";
+    : "Sign in to save recipes to your shared collection.";
   $("#signup-fields").hidden = !signup;
   $("#signup-fields").querySelectorAll("input").forEach((input) => { input.required = signup; });
   $("#auth-submit").innerHTML = signup ? "Create account <span>↗</span>" : "Sign in <span>↗</span>";
