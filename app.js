@@ -281,6 +281,20 @@ function saveManualRating(recipe, rating) {
   localStorage.setItem("kitchen-archive-manual-ratings", JSON.stringify(saved));
 }
 
+// Drop a member's locally-cached rating for a recipe. Called once the rating
+// has been persisted to the cloud so the cloud copy is the single source of
+// truth; otherwise the reload merge would show the same rating twice (once
+// from the cloud under the real member name, once from local under the
+// reviewer alias).
+function removeManualRating(recipe, member) {
+  const saved = manualRatings();
+  const key = normalizeRecipeTitle(recipe.title);
+  const remaining = (saved[key] || []).filter((item) => item.member !== member);
+  if (remaining.length) saved[key] = remaining;
+  else delete saved[key];
+  localStorage.setItem("kitchen-archive-manual-ratings", JSON.stringify(saved));
+}
+
 function matchingPersonalImages(title, sourceUrl = "") {
   return personalImageGallery[sourceUrl]
     || personalImageGalleryByTitle[String(title || "").trim().toLowerCase()]
@@ -338,7 +352,24 @@ function normalizeDraft(draft) {
     tags: (draft.tags || []).flatMap((tag) => typeof tag === "string" ? tag.split(",").map((item) => item.trim()) : tag.name || tag.label || "").filter(Boolean),
     measurementMode,
     imageUrl: extractedImage || sourceImages[0] || "",
-    imageUrls: [...sourceImages, ...(draft.imageUrls || []), ...(extractedImage ? [extractedImage] : [])].filter(Boolean)
+    imageUrls: [...sourceImages, ...(draft.imageUrls || []), ...(extractedImage ? [extractedImage] : [])].filter(Boolean),
+    nutrition: normalizeNutrition(draft.nutrition)
+  };
+}
+
+// Coerce whatever the distill function returned into a clean numeric shape so
+// the rest of the app can rely on calories/protein/carbs/fat always existing.
+function normalizeNutrition(nutrition) {
+  const value = nutrition || {};
+  const toNumber = (input) => {
+    const parsed = Number(input);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
+  };
+  return {
+    calories: toNumber(value.calories),
+    protein: toNumber(value.protein),
+    carbs: toNumber(value.carbs),
+    fat: toNumber(value.fat)
   };
 }
 
@@ -384,7 +415,18 @@ function recipeFromRow(row) {
   };
 }
 
-async function loadCloudRecipes() {
+// Both onAuthStateChange (INITIAL_SESSION) and getSession() trigger a load on
+// startup. Coalesce concurrent calls onto a single in-flight promise so the
+// tables aren't double-fetched and createHousehold can't fire twice (which
+// would create duplicate households for a brand-new user).
+let cloudLoadInFlight = null;
+function loadCloudRecipes() {
+  if (cloudLoadInFlight) return cloudLoadInFlight;
+  cloudLoadInFlight = loadCloudRecipesInner().finally(() => { cloudLoadInFlight = null; });
+  return cloudLoadInFlight;
+}
+
+async function loadCloudRecipesInner() {
   if (!cloud.client || !cloud.session) return;
   const localCodexRecipes = state.recipes.filter((recipe) => recipe.localOnly);
   const { data: membership, error: memberError } = await cloud.client
@@ -610,11 +652,23 @@ async function deleteRecipeFromCloud(recipe) {
 
 async function saveRatingToCloud(recipe, rating) {
   if (!cloud.connected || !cloud.client || !cloud.memberId) return;
+  // Reviewer names like "Uni"/"Alex" come from localReviewers and aren't
+  // necessarily real household_members. When the name doesn't match a member,
+  // attribute the rating to the signed-in member so it still persists to the
+  // cloud instead of being silently dropped (the old `if (!member) return`).
   const member = cloud.members.find((item) => item.display_name === rating.member);
-  if (!member) return;
+  const memberId = member?.id || cloud.memberId;
+  // The ratings table has no unique (recipe_id, member_id) constraint, so clear
+  // any prior rating from this member for this recipe before inserting to keep
+  // one row per member instead of accumulating duplicates on every re-rate.
+  const { error: deleteError } = await cloud.client.from("ratings")
+    .delete()
+    .eq("recipe_id", recipe.id)
+    .eq("member_id", memberId);
+  if (deleteError) throw deleteError;
   const { error } = await cloud.client.from("ratings").insert({
     recipe_id: recipe.id,
-    member_id: member?.id || cloud.memberId,
+    member_id: memberId,
     score: rating.score,
     would_make_again: rating.wouldMakeAgain,
     comment: rating.comment || "",
@@ -677,11 +731,16 @@ async function persistNewRecipe(recipe) {
     openDrawer(duplicate.id);
     return;
   }
+  // Mark as local-only until a cloud insert confirms; loadCloudRecipes re-uploads
+  // anything still flagged so recipes added offline (or when the cloud write
+  // fails) aren't dropped when state.recipes is rebuilt from the cloud on reload.
+  recipe.localOnly = true;
   state.recipes.unshift(recipe);
   saveRecipes();
   if (cloud.connected) {
     try {
       await saveRecipeToCloud(recipe);
+      recipe.localOnly = false;
       saveRecipes();
     } catch (error) {
       console.error(error);
@@ -722,7 +781,16 @@ async function initSupabase() {
         showToast(`Recipes couldn't be loaded: ${error.message || "unknown error"}`);
       }
     } else {
+      // On sign-out, drop the household's private data so it isn't left on
+      // screen or in localStorage for the next person on this device. Reset to
+      // the seeded starter recipes a signed-out visitor would normally see.
       cloud.connected = false;
+      cloud.householdId = null;
+      cloud.memberId = null;
+      cloud.members = [];
+      state.recipes = starterRecipes.map((recipe) => ({ ...recipe }));
+      saveRecipes();
+      render();
     }
   });
   const { data, error } = await cloud.client.auth.getSession();
@@ -739,6 +807,11 @@ async function initSupabase() {
 
 function allTags() {
   return [...new Set(state.recipes.flatMap((recipe) => recipe.tags))].sort();
+}
+
+function hasNutrition(recipe) {
+  return [recipe.calories, recipe.protein, recipe.carbs, recipe.fat]
+    .some((value) => (Number(value) || 0) > 0);
 }
 
 function averageRating(recipe) {
@@ -965,13 +1038,18 @@ async function persistTagChanges(changedRecipes) {
   }
   render();
   if (!cloud.connected) return;
+  let failed = 0;
   for (const recipe of changedRecipes) {
     try {
       await updateRecipeToCloud(recipe);
     } catch (error) {
+      failed += 1;
       console.warn("Label sync skipped:", error.message);
     }
   }
+  // Surface a failed cloud sync instead of swallowing it: tags are rebuilt from
+  // the cloud on reload, so a silent failure would quietly revert the change.
+  if (failed) showToast(`Label saved locally; cloud sync failed for ${failed} recipe${failed === 1 ? "" : "s"}.`);
 }
 
 // Rename a label everywhere. If the new name already exists on some recipes the
@@ -1069,6 +1147,7 @@ function openDrawer(id) {
     <div class="card-meta"><span>◷ ${esc(formatTimeLabel(recipe.time))}</span><span>♧ ${esc(recipe.servings)} servings</span><span>★ ${averageRating(recipe).toFixed(1)} household</span></div>
     <hr class="drawer-rule" />
     <h3 class="drawer-section-title">Nutrition per serving</h3>
+    ${hasNutrition(recipe) ? `
     <div class="nutrition-strip">
       <div class="nutrition-cell"><span class="nutrition-value">${esc(recipe.calories)}</span><span class="nutrition-label">kcal</span></div>
       <div class="nutrition-cell"><span class="nutrition-value">${esc(recipe.protein)} g</span><span class="nutrition-label">protein</span></div>
@@ -1076,6 +1155,10 @@ function openDrawer(id) {
       <div class="nutrition-cell"><span class="nutrition-value">${esc(recipe.fat)} g</span><span class="nutrition-label">fat</span></div>
     </div>
     <p class="source-line">Nutrition is an estimate · <strong>medium confidence</strong></p>
+    ` : `
+    <p class="nutrition-empty">Nutrition hasn't been calculated for this recipe yet.</p>
+    <button type="button" class="ghost-button" id="estimate-nutrition-button">Estimate nutrition</button>
+    `}
     <hr class="drawer-rule" />
     <h3 class="drawer-section-title">Ingredients</h3>
     <ul class="ingredient-list">${recipe.ingredients.map((ingredient) => `<li>${esc(ingredient)}</li>`).join("")}</ul>
@@ -1106,6 +1189,7 @@ function openDrawer(id) {
   $("#recipe-drawer").hidden = false;
   $("#edit-recipe-button").addEventListener("click", () => openEditModal(recipe));
   $("#delete-recipe-button").addEventListener("click", () => deleteRecipe(recipe));
+  $("#estimate-nutrition-button")?.addEventListener("click", () => estimateNutrition(recipe));
   const ratingStarsControl = $("#rating-stars");
   const scoreInput = $("#rating-form [name=score]");
   let selectedScore = 5;
@@ -1142,10 +1226,14 @@ function openDrawer(id) {
     const existing = recipe.ratings.find((item) => item.member === rating.member);
     if (existing) Object.assign(existing, rating);
     else recipe.ratings.push(rating);
+    // Save locally first so the rating survives even if the cloud write fails.
     saveManualRating(recipe, rating);
     saveRecipes();
     try {
       await saveRatingToCloud(recipe, rating);
+      // Cloud is now the source of truth for this rating; drop the local copy
+      // so the next reload doesn't render it twice (cloud + local alias).
+      if (cloud.connected) removeManualRating(recipe, rating.member);
       showToast("Rating saved.");
     } catch (error) {
       console.error(error);
@@ -1305,6 +1393,41 @@ function renderSuggestedTags(draft) {
   }));
 }
 
+// Backfill nutrition for a recipe that was saved with zeros (e.g. imported
+// before nutrition estimation existed). Reuses the distill function, feeding
+// it the recipe's own text so the model estimates per-serving macros.
+async function estimateNutrition(recipe) {
+  const button = $("#estimate-nutrition-button");
+  if (button) { button.disabled = true; button.textContent = "Estimating…"; }
+  const recipeText = [
+    recipe.title,
+    `Serves ${recipe.servings}`,
+    "Ingredients:",
+    ...recipe.ingredients,
+    "Instructions:",
+    ...recipe.instructions
+  ].join("\n");
+  try {
+    const draft = await requestDistilledRecipe(recipeText, "");
+    const nutrition = normalizeNutrition(draft.nutrition);
+    if (!hasNutrition(nutrition)) throw new Error("no values returned");
+    Object.assign(recipe, nutrition);
+    saveRecipes();
+    try {
+      await updateRecipeToCloud(recipe);
+    } catch (cloudError) {
+      console.warn("Nutrition estimate saved locally only:", cloudError.message);
+    }
+    render();
+    openDrawer(recipe.id);
+    showToast("Nutrition estimated.");
+  } catch (error) {
+    console.error(error);
+    if (button) { button.disabled = false; button.textContent = "Estimate nutrition"; }
+    showToast(`Couldn't estimate nutrition: ${error.message || "try again"}`);
+  }
+}
+
 async function requestDistilledRecipe(text, url) {
   if (mockMode) {
     let draft = normalizeDraft(extractDraft(text, url));
@@ -1442,10 +1565,13 @@ $("#add-label-button").addEventListener("click", async () => {
   render();
   try {
     await updateRecipeToCloud(recipe);
+    showToast(`Added “${tag}” to ${recipe.title}.`);
   } catch (error) {
+    // Don't claim success on a failed cloud write — tags are rebuilt from the
+    // cloud on reload, so the label would silently disappear.
     console.warn("Label cloud sync skipped:", error.message);
+    showToast(`Added “${tag}” locally; cloud sync failed.`);
   }
-  showToast(`Added “${tag}” to ${recipe.title}.`);
 });
 $("#clear-filters-button").addEventListener("click", clearFilters);
 $("#manage-labels-button").addEventListener("click", openLabelManager);
@@ -1511,9 +1637,15 @@ $("#recipe-form").addEventListener("submit", (event) => {
       instructions: instructions.length ? instructions : ["Add cooking instructions when you are ready."]
     });
     closeModal();
+    // Persist locally and refresh the UI first so the edit survives even if the
+    // cloud write fails (otherwise it lived only in memory and reverted on
+    // reload). Then attempt the cloud sync and report only its outcome.
+    saveRecipes();
+    render();
+    openDrawer(recipe.id);
     updateRecipeToCloud(recipe)
-      .then(() => { saveRecipes(); render(); openDrawer(recipe.id); showToast("Recipe updated."); })
-      .catch((error) => showToast(`Update failed: ${error.message || "try again"}`));
+      .then(() => showToast("Recipe updated."))
+      .catch((error) => showToast(`Updated locally; cloud sync failed: ${error.message || "try again"}`));
     return;
   }
   const recipe = {
@@ -1557,10 +1689,7 @@ $("#import-review-form").addEventListener("submit", (event) => {
     imageUrl: data.get("imageUrl") || state.activeImportDraft?.imageUrl || "",
     imageUrls: state.activeImportDraft?.imageUrls || [],
     measurementMode: data.get("measurementMode") || state.activeImportDraft?.measurementMode || "both",
-    calories: 0,
-    protein: 0,
-    carbs: 0,
-    fat: 0,
+    ...normalizeNutrition(state.activeImportDraft?.nutrition),
     rating: 0,
     cooked: 0,
     added: Date.now(),

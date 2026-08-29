@@ -4,6 +4,13 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS"
 };
 
+type Nutrition = {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+};
+
 type RecipeDraft = {
   title: string;
   description: string;
@@ -14,6 +21,7 @@ type RecipeDraft = {
   tags: string[];
   imageUrl?: string;
   measurementMode?: "both" | "original" | "metric";
+  nutrition?: Nutrition;
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -74,6 +82,29 @@ function findRecipeJsonLd(html: string) {
   return null;
 }
 
+// Pull the leading number out of schema.org nutrition strings such as
+// "610 calories" or "35 g"; returns 0 when absent or unparseable.
+function nutritionNumber(value: unknown): number {
+  const match = String(value ?? "").match(/[\d.]+/);
+  const parsed = match ? Number(match[0]) : 0;
+  return Number.isFinite(parsed) ? Math.round(parsed) : 0;
+}
+
+// schema.org NutritionInformation is per single serving; map it onto our
+// flat nutrition shape. Returns null when no usable values are present.
+function structuredNutrition(recipe: Record<string, unknown>): Nutrition | null {
+  const info = recipe.nutrition as Record<string, unknown> | undefined;
+  if (!info || typeof info !== "object") return null;
+  const nutrition = {
+    calories: nutritionNumber(info.calories),
+    protein: nutritionNumber(info.proteinContent),
+    carbs: nutritionNumber(info.carbohydrateContent),
+    fat: nutritionNumber(info.fatContent)
+  };
+  const hasAny = Object.values(nutrition).some((value) => value > 0);
+  return hasAny ? nutrition : null;
+}
+
 function structuredRecipeDraft(recipe: Record<string, unknown>): RecipeDraft | null {
   if (!recipe) return null;
   const instructions = Array.isArray(recipe.recipeInstructions)
@@ -98,7 +129,8 @@ function structuredRecipeDraft(recipe: Record<string, unknown>): RecipeDraft | n
     ,
     imageUrl: Array.isArray(recipe.image)
       ? imageValueToUrl(recipe.image[0])
-      : imageValueToUrl(recipe.image)
+      : imageValueToUrl(recipe.image),
+    nutrition: structuredNutrition(recipe) || undefined
   };
 }
 
@@ -203,7 +235,7 @@ async function callModel(sourceText: string, sourceUrl: string): Promise<RecipeD
   const model = Deno.env.get("LLM_MODEL") || (provider === "anthropic" ? "claude-haiku-4-5-20251001" : "");
   if (!apiKey || !model) return null;
 
-  const systemPrompt = "You clean recipe webpages into structured data. Ignore stories, ads, navigation, author biographies, and newsletter text. Never invent missing quantities. Return JSON only with title, description, servings, time, ingredients, instructions, tags, measurementMode, and imageUrl when known. IMPORTANT: time must be a plain string such as '45 minutes'; ingredients must be an array of plain strings such as '150 g salmon fillet, skinless'; instructions must be an array of plain strings; tags must be an array of plain strings; measurementMode must be 'both', 'original', or 'metric'. Never return ingredient or time objects. Keep original quantities alongside metric conversions when conversion is reliable; prefer metric for baking.";
+  const systemPrompt = "You clean recipe webpages into structured data. Ignore stories, ads, navigation, author biographies, and newsletter text. Never invent missing quantities. Return JSON only with title, description, servings, time, ingredients, instructions, tags, measurementMode, imageUrl when known, and nutrition. IMPORTANT: time must be a plain string such as '45 minutes'; ingredients must be an array of plain strings such as '150 g salmon fillet, skinless'; instructions must be an array of plain strings; tags must be an array of plain strings; measurementMode must be 'both', 'original', or 'metric'. Never return ingredient or time objects. Keep original quantities alongside metric conversions when conversion is reliable; prefer metric for baking. nutrition must be an object with numeric fields calories, protein, carbs, and fat estimating the values PER SINGLE SERVING (grams for protein/carbs/fat, kcal for calories). If the page states nutrition, use it; otherwise estimate from the ingredients and servings. Round to whole numbers. Never return zeros unless the recipe genuinely has none.";
   const userPrompt = JSON.stringify({ sourceUrl, sourceText });
   if (provider === "anthropic") {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -271,9 +303,24 @@ Deno.serve(async (request) => {
       }
     }
     draft = draft || structured || fallbackDraft(sourceText, url.trim());
+    // Prefer the model's per-serving estimate, fall back to any nutrition the
+    // page published in JSON-LD, and always coerce to clean whole numbers so
+    // the client never stores NaN or partial objects.
+    const rawNutrition = (draft.nutrition && Object.values(draft.nutrition).some((value) => nutritionNumber(value) > 0))
+      ? draft.nutrition
+      : structured?.nutrition;
+    const nutrition = rawNutrition
+      ? {
+          calories: nutritionNumber(rawNutrition.calories),
+          protein: nutritionNumber(rawNutrition.protein),
+          carbs: nutritionNumber(rawNutrition.carbs),
+          fat: nutritionNumber(rawNutrition.fat)
+        }
+      : undefined;
     return jsonResponse({
       ...draft,
       imageUrl: draft.imageUrl || structured?.imageUrl || fetched?.imageUrl || "",
+      nutrition,
       sourceUrl: url.trim()
     });
   } catch (error) {

@@ -189,6 +189,7 @@ h2 span { color: var(--muted); font: 400 11px var(--mono); vertical-align: middl
 .member-name { color: var(--muted); }
 .stars { color: var(--red); letter-spacing: 2px; }
 .member-score { font: 11px var(--mono); }
+.nutrition-empty { color: var(--muted); font-size: 13px; margin: 15px 0 12px; }
 .source-line { color: var(--muted); font-size: 11px; }
 .source-line strong { color: var(--ink); }
 
