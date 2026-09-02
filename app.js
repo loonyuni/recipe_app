@@ -1782,7 +1782,6 @@ $("#sort-select").addEventListener("change", (event) => { state.sort = event.tar
 $("#filter-button").addEventListener("click", openFilterPopover);
 $("#new-recipe-button").addEventListener("click", openImportModal);
 $("#empty-new-button").addEventListener("click", openImportModal);
-$("#import-button").addEventListener("click", openImportModal);
 $("#auth-button").addEventListener("click", async () => {
   if (!cloud.session) {
     openAuthModal();
