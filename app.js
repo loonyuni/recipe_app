@@ -918,10 +918,15 @@ function ratingStars(score) {
 }
 
 function renderLabels() {
-  $("#label-list").innerHTML = allTags().slice(0, 12).map((tag) => `
-    <div class="label-item" data-tag="${escAttr(tag)}">
+  // Show every label, most-used first (ties broken alphabetically), so a large
+  // tag set (e.g. after a big import) stays discoverable. The list scrolls via
+  // CSS rather than being truncated to the first 12 alphabetically.
+  const count = (tag) => state.recipes.filter((recipe) => recipe.tags.includes(tag)).length;
+  const tags = allTags().sort((a, b) => count(b) - count(a) || a.localeCompare(b));
+  $("#label-list").innerHTML = tags.map((tag) => `
+    <div class="label-item${state.selectedTags.includes(tag) ? " is-active" : ""}" data-tag="${escAttr(tag)}">
       <span class="label-dot"></span><span>${esc(tag)}</span>
-      <span class="label-count">${state.recipes.filter((recipe) => recipe.tags.includes(tag)).length}</span>
+      <span class="label-count">${count(tag)}</span>
     </div>`).join("");
   $$(".label-item").forEach((item) => item.addEventListener("click", () => toggleTag(item.dataset.tag)));
 }
@@ -1747,6 +1752,9 @@ $("#add-label-button").addEventListener("click", async () => {
   recipe.tags.push(tag);
   saveRecipes();
   render();
+  // Re-open the drawer so the newly added tag shows immediately (render()
+  // refreshes the grid/sidebar but not the already-open drawer contents).
+  if (state.activeRecipe?.id === recipe.id) openDrawer(recipe.id);
   try {
     await updateRecipeToCloud(recipe);
     showToast(`Added “${tag}” to ${recipe.title}.`);
