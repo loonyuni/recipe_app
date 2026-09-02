@@ -242,6 +242,96 @@ function formatIngredient(value) {
     .filter(Boolean).join(" ").trim() || JSON.stringify(value);
 }
 
+// --- Recipe scaling (view-only cooking helper) ------------------------------
+// These are pure functions so they can be unit-tested in isolation. They power
+// the drawer's 1x/2x/3x buttons and the fine-grained "edit any ingredient
+// quantity and everything else follows" flow. None of them mutate a recipe or
+// touch the cloud; scaling is a display transform only.
+
+// Unicode vulgar fractions we might see in imported ingredient strings.
+const UNICODE_FRACTIONS = {
+  "¼": 0.25, "½": 0.5, "¾": 0.75,
+  "⅓": 1 / 3, "⅔": 2 / 3,
+  "⅕": 0.2, "⅖": 0.4, "⅗": 0.6, "⅘": 0.8,
+  "⅙": 1 / 6, "⅚": 5 / 6,
+  "⅛": 0.125, "⅜": 0.375, "⅝": 0.625, "⅞": 0.875,
+  "⅐": 1 / 7, "⅑": 1 / 9, "⅒": 0.1
+};
+const UNICODE_FRACTION_CHARS = Object.keys(UNICODE_FRACTIONS).join("");
+
+// Convert a matched quantity token ("2 1/2", "1/4", "¼", "1¼", "57.20", "500")
+// into a number. Returns null when it can't be interpreted.
+function quantityTokenToNumber(raw) {
+  const token = String(raw).trim();
+  // Mixed number: "2 1/2"
+  let match = token.match(/^(\d+)\s+(\d+)\s*\/\s*(\d+)$/);
+  if (match) return Number(match[1]) + Number(match[2]) / Number(match[3]);
+  // Integer followed by a unicode fraction: "1¼" or "1 ½"
+  match = token.match(new RegExp(`^(\\d+)\\s*([${UNICODE_FRACTION_CHARS}])$`));
+  if (match) return Number(match[1]) + UNICODE_FRACTIONS[match[2]];
+  // Simple fraction: "1/4"
+  match = token.match(/^(\d+)\s*\/\s*(\d+)$/);
+  if (match) return Number(match[1]) / Number(match[2]);
+  // Lone unicode fraction: "¼"
+  if (token.length === 1 && UNICODE_FRACTIONS[token] !== undefined) return UNICODE_FRACTIONS[token];
+  // Decimal or integer: "57.20", "500", ".5"
+  const number = Number(token);
+  return Number.isFinite(number) ? number : null;
+}
+
+// Pull the LEADING quantity off an ingredient string, leaving the rest intact.
+// Returns { value, token, rest } or null when there's no parseable quantity
+// (e.g. "Salt to taste"). The rest keeps its original spacing so we can
+// reassemble "60ml (1/4 cup) soy sauce" without inventing a space after "ml".
+function parseLeadingQuantity(text) {
+  const str = String(text ?? "");
+  const pattern = new RegExp(
+    "^(\\s*)(" +
+      "\\d+\\s+\\d+\\s*/\\s*\\d+" +               // mixed number: 2 1/2
+      `|\\d+\\s*[${UNICODE_FRACTION_CHARS}]` +      // integer + unicode: 1¼
+      "|\\d+\\s*/\\s*\\d+" +                        // fraction: 1/4
+      `|[${UNICODE_FRACTION_CHARS}]` +              // lone unicode: ¼
+      "|\\d*\\.\\d+" +                              // decimal: 57.20 / .5
+      "|\\d+" +                                     // integer: 500
+    ")"
+  );
+  const match = str.match(pattern);
+  if (!match) return null;
+  const value = quantityTokenToNumber(match[2]);
+  if (value === null || !Number.isFinite(value) || value <= 0) return null;
+  return { value, token: match[2], rest: str.slice(match[0].length) };
+}
+
+// Render a scaled quantity for display: at most 2 decimals, trailing zeros
+// dropped (500 -> "500", 90.4 -> "90.4", 0.25 -> "0.25").
+function formatQuantity(value) {
+  if (!Number.isFinite(value)) return "";
+  return String(Math.round(value * 100) / 100);
+}
+
+// Scale one ingredient string by `factor`. Ingredients with no parseable
+// leading quantity pass through unchanged (scaled: false).
+function scaleIngredient(text, factor) {
+  const parsed = parseLeadingQuantity(text);
+  if (!parsed) return { text: String(text ?? ""), scaled: false, rest: String(text ?? "") };
+  const scaledValue = parsed.value * factor;
+  return {
+    text: formatQuantity(scaledValue) + parsed.rest,
+    scaled: true,
+    originalValue: parsed.value,
+    scaledValue,
+    rest: parsed.rest
+  };
+}
+
+// Servings scale with the recipe; round to the nearest 0.5 and show "4" or
+// "4.5" (never "4.0").
+function formatScaledServings(servings, factor) {
+  const raw = (Number(servings) || 0) * (Number(factor) || 1);
+  const rounded = Math.round(raw * 2) / 2;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
 function recipeImageUrls(recipe) {
   return [...new Set([recipe.imageUrl, ...(recipe.imageUrls || [])].filter(Boolean))];
 }
@@ -943,10 +1033,27 @@ function semanticGroups() {
   return Object.entries(SEARCH_SYNONYMS).map(([key, values]) => [key, ...values]);
 }
 
+const PASTRY_SCHOOL_TAG = "pastry school";
+function isPastrySchool(recipe) {
+  return (recipe.tags || []).includes(PASTRY_SCHOOL_TAG);
+}
+
 function filteredRecipes() {
   let recipes = [...state.recipes];
-  if (state.view === "favorites") recipes = recipes.filter((recipe) => averageRating(recipe) >= 4.5);
-  if (state.view === "recent") recipes = recipes.filter((recipe) => recipe.cooked > 0).sort((a, b) => b.cooked - a.cooked);
+  const searching = state.search.trim().length > 0;
+  const tagFiltering = state.selectedTags.length > 0;
+  if (state.view === "pastry") {
+    recipes = recipes.filter(isPastrySchool);
+  } else if (state.view === "favorites") {
+    recipes = recipes.filter((recipe) => averageRating(recipe) >= 4.5);
+  } else if (state.view === "recent") {
+    recipes = recipes.filter((recipe) => recipe.cooked > 0).sort((a, b) => b.cooked - a.cooked);
+  } else if (!searching && !tagFiltering) {
+    // Default library view: keep the pastry-school archive out so it doesn't
+    // bury personal recipes. Searching or filtering by a tag still surfaces
+    // everything, so the archive stays discoverable.
+    recipes = recipes.filter((recipe) => !isPastrySchool(recipe));
+  }
   if (state.selectedTags.length) recipes = recipes.filter((recipe) => state.selectedTags.every((tag) => recipe.tags.includes(tag)));
   if (state.search.trim()) {
     const terms = semanticTerms(state.search);
@@ -1003,7 +1110,7 @@ function render() {
   renderLabels();
   renderFilters();
   renderRecipes();
-  const titles = { library: "All recipes", favorites: "Family favorites", recent: "Recently cooked" };
+  const titles = { library: "All recipes", favorites: "Family favorites", recent: "Recently cooked", pastry: "Pastry school" };
   $("#view-title").firstChild.textContent = titles[state.view] + " ";
   $$(".nav-item").forEach((item) => item.classList.toggle("is-active", item.dataset.view === state.view));
 }
@@ -1120,10 +1227,68 @@ function auditLabels() {
   return suggestions;
 }
 
+// The active drawer's scale factor. View-only: never persisted or synced. Reset
+// to 1x whenever a drawer is (re)opened so scaling doesn't leak between recipes.
+let drawerScale = 1;
+
+// Re-render every scale-dependent piece of the open drawer: the editable
+// ingredient quantities, the servings/factor summary, and the per-batch
+// nutrition total. Called on open and after every scale change.
+function applyDrawerScaling() {
+  const recipe = state.activeRecipe;
+  if (!recipe) return;
+  const factor = drawerScale;
+
+  const list = $("#ingredient-list");
+  if (list) {
+    list.innerHTML = (recipe.ingredients || []).map((ingredient, index) => {
+      const scaled = scaleIngredient(ingredient, factor);
+      if (!scaled.scaled) return `<li class="ingredient-static">${esc(ingredient)}</li>`;
+      const rest = scaled.rest.replace(/^\s+/, "");
+      return `<li class="ingredient-scalable">
+        <input class="ingredient-qty" type="text" inputmode="decimal" value="${escAttr(formatQuantity(scaled.scaledValue))}" data-index="${index}" data-original="${escAttr(scaled.originalValue)}" aria-label="Quantity for ${escAttr(rest || "ingredient")}" />
+        <span class="ingredient-rest">${esc(rest)}</span>
+      </li>`;
+    }).join("");
+    $$(".ingredient-qty", list).forEach((input) => input.addEventListener("change", onIngredientQtyChange));
+  }
+
+  const summary = $("#scale-summary");
+  if (summary) {
+    summary.textContent = `${formatQuantity(factor)}× · makes ${formatScaledServings(recipe.servings, factor)} servings`;
+  }
+  $$("#scale-controls .scale-button").forEach((button) => {
+    button.classList.toggle("is-active", Number(button.dataset.scale) === factor);
+  });
+
+  const batchTotal = $("#batch-total");
+  if (batchTotal && hasNutrition(recipe)) {
+    const servings = (Number(recipe.servings) || 0) * factor;
+    const total = (perServing) => Math.round((Number(perServing) || 0) * servings);
+    batchTotal.innerHTML = `Total this batch (${formatScaledServings(recipe.servings, factor)} servings): <strong>${total(recipe.calories)} kcal</strong> · ${total(recipe.protein)} g protein · ${total(recipe.carbs)} g carbs · ${total(recipe.fat)} g fat`;
+  }
+}
+
+// User typed a new quantity into one ingredient. Derive the scale factor from
+// that ingredient's original quantity, then rescale everything else to match.
+function onIngredientQtyChange(event) {
+  const input = event.target;
+  const original = Number(input.dataset.original);
+  const parsed = parseLeadingQuantity(input.value);
+  const newValue = parsed ? parsed.value : Number(input.value);
+  if (!Number.isFinite(newValue) || newValue <= 0 || !Number.isFinite(original) || original <= 0) {
+    applyDrawerScaling(); // reject bad input and restore the last valid display
+    return;
+  }
+  drawerScale = newValue / original;
+  applyDrawerScaling();
+}
+
 function openDrawer(id) {
   const recipe = state.recipes.find((item) => item.id === id);
   if (!recipe) return;
   state.activeRecipe = recipe;
+  drawerScale = 1;
   const ratings = recipe.ratings || [];
   const reviewers = [...new Set([
     ...localReviewers,
@@ -1154,6 +1319,7 @@ function openDrawer(id) {
       <div class="nutrition-cell"><span class="nutrition-value">${esc(recipe.carbs)} g</span><span class="nutrition-label">carbs</span></div>
       <div class="nutrition-cell"><span class="nutrition-value">${esc(recipe.fat)} g</span><span class="nutrition-label">fat</span></div>
     </div>
+    <p class="batch-total" id="batch-total"></p>
     <p class="source-line">Nutrition is an estimate · <strong>medium confidence</strong></p>
     ` : `
     <p class="nutrition-empty">Nutrition hasn't been calculated for this recipe yet.</p>
@@ -1161,7 +1327,20 @@ function openDrawer(id) {
     `}
     <hr class="drawer-rule" />
     <h3 class="drawer-section-title">Ingredients</h3>
-    <ul class="ingredient-list">${recipe.ingredients.map((ingredient) => `<li>${esc(ingredient)}</li>`).join("")}</ul>
+    <div class="scale-panel">
+      <div class="scale-controls" id="scale-controls">
+        <span class="scale-eyebrow">Scale recipe</span>
+        <div class="scale-buttons">
+          <button type="button" class="scale-button" data-scale="1">1×</button>
+          <button type="button" class="scale-button" data-scale="2">2×</button>
+          <button type="button" class="scale-button" data-scale="3">3×</button>
+        </div>
+        <button type="button" class="ghost-button scale-reset" id="scale-reset">Reset to 1×</button>
+      </div>
+      <p class="scale-summary" id="scale-summary"></p>
+      <p class="scale-hint">Tip: type any ingredient's quantity (e.g. what you actually have) and the rest scale to match.</p>
+    </div>
+    <ul class="ingredient-list scaled-ingredient-list" id="ingredient-list"></ul>
     <h3 class="drawer-section-title">Method</h3>
     <ol class="instruction-list">${recipe.instructions.map((step) => `<li>${esc(step)}</li>`).join("")}</ol>
     <hr class="drawer-rule" />
@@ -1187,6 +1366,11 @@ function openDrawer(id) {
     ${recipe.variants.map((variant) => `<div class="variant-card"><strong>${esc(variant.name)}</strong><p>${esc(variant.note)}</p></div>`).join("")}
     <button class="ghost-button" style="margin-top:14px" id="add-variant-button">＋ Add a variant</button>`;
   $("#recipe-drawer").hidden = false;
+  $$("#scale-controls .scale-button").forEach((button) => {
+    button.addEventListener("click", () => { drawerScale = Number(button.dataset.scale); applyDrawerScaling(); });
+  });
+  $("#scale-reset").addEventListener("click", () => { drawerScale = 1; applyDrawerScaling(); });
+  applyDrawerScaling();
   $("#edit-recipe-button").addEventListener("click", () => openEditModal(recipe));
   $("#delete-recipe-button").addEventListener("click", () => deleteRecipe(recipe));
   $("#estimate-nutrition-button")?.addEventListener("click", () => estimateNutrition(recipe));
