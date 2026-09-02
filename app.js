@@ -128,7 +128,11 @@ const starterRecipes = [
 ];
 
 const storedRecipes = JSON.parse(localStorage.getItem("kitchen-archive-recipes") || "null");
-const seededRecipes = storedRecipes || starterRecipes;
+// An empty array is truthy, so `stored || starter` would leave a signed-out
+// visitor staring at zero recipes once the cache is ever persisted as []
+// (which happens transiently mid cloud-load and on some sign-out paths).
+// Fall back to the seed recipes unless the cache actually holds something.
+const seededRecipes = storedRecipes?.length ? storedRecipes : starterRecipes;
 
 const state = {
   recipes: seededRecipes,
@@ -1740,6 +1744,7 @@ async function showImportReview() {
     form.measurementMode.value = draft.measurementMode || "both";
     form.ingredients.value = (draft.ingredients || []).join("\n");
     form.instructions.value = (draft.instructions || []).join("\n");
+    form.customTags.value = "";
     $("#import-image-preview").hidden = !draft.imageUrl;
     if (draft.imageUrl) $("#import-image").src = draft.imageUrl;
     const gallery = $("#import-image-gallery");
@@ -1923,6 +1928,10 @@ $("#import-review-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const data = new FormData(event.target);
   const selectedTags = $$("[data-suggested-tag].is-selected").map((button) => button.dataset.suggestedTag);
+  // Fold in any labels the user typed themselves, then de-dupe against the
+  // selected suggestion chips so an added-and-suggested label isn't doubled.
+  const customTags = (data.get("customTags") || "").split(",").map((item) => item.trim()).filter(Boolean);
+  const tags = [...new Set([...selectedTags, ...customTags])];
   const title = data.get("title").trim();
   const recipe = {
     id: `${Date.now()}-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
@@ -1930,7 +1939,7 @@ $("#import-review-form").addEventListener("submit", (event) => {
     description: data.get("description"),
     time: Number.parseInt(data.get("time"), 10) || 45,
     servings: Number.parseInt(data.get("servings"), 10) || 4,
-    tags: selectedTags.length ? selectedTags : ["new recipe"],
+    tags: tags.length ? tags : ["new recipe"],
     imageClass: "new",
     imageUrl: data.get("imageUrl") || state.activeImportDraft?.imageUrl || "",
     imageUrls: state.activeImportDraft?.imageUrls || [],
