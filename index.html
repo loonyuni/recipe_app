@@ -161,14 +161,14 @@
             Description
             <textarea name="description" rows="3" placeholder="What makes this one worth keeping?"></textarea>
           </label>
-          <label>
-            Ingredients
-            <textarea name="ingredients" rows="4" placeholder="1 onion&#10;2 tbsp olive oil&#10;..."></textarea>
-          </label>
-          <label>
-            Instructions
-            <textarea name="instructions" rows="5" placeholder="Chop the vegetables...&#10;Roast until golden..."></textarea>
-          </label>
+          <div class="section-editor" id="recipe-section-editor" data-section-editor>
+            <div class="section-editor-label-row">
+              <span class="section-editor-label">Ingredients &amp; method</span>
+              <span class="field-note">Add a section per component (e.g. pastry, custard, finishing). Leave one section for a simple recipe.</span>
+            </div>
+            <div class="section-editor-cards"></div>
+            <button type="button" class="ghost-button section-editor-add">＋ Add section</button>
+          </div>
           <div class="form-actions">
             <button type="button" class="ghost-button" id="cancel-form">Cancel</button>
             <button type="submit" class="primary-button">Save recipe <span>↗</span></button>
@@ -258,18 +258,22 @@
               </select>
             </label>
             <div id="import-image-gallery" class="import-image-gallery" hidden></div>
-            <label>
-              Ingredients <span class="label-hint">metric-first where possible</span>
-              <textarea name="ingredients" rows="6"></textarea>
-            </label>
-            <label>
-              Method
-              <textarea name="instructions" rows="5"></textarea>
-            </label>
+            <div class="section-editor" id="import-section-editor" data-section-editor>
+              <div class="section-editor-label-row">
+                <span class="section-editor-label">Ingredients &amp; method <span class="label-hint">metric-first where possible</span></span>
+                <span class="field-note">Split multi-part recipes into sections (e.g. pastry, custard, finishing).</span>
+              </div>
+              <div class="section-editor-cards"></div>
+              <button type="button" class="ghost-button section-editor-add">＋ Add section</button>
+            </div>
             <div class="suggestion-box">
               <div><span class="suggestion-spark">✦</span><strong>Suggested labels</strong></div>
               <div id="suggested-tags" class="suggested-tags"></div>
               <small>Suggestions are never final until you confirm them.</small>
+              <label class="custom-labels-field">
+                Add your own labels
+                <input name="customTags" placeholder="weeknight, vegetarian, make ahead" />
+              </label>
             </div>
             <div id="dev-debug-panel" class="dev-debug-panel" hidden>
               <div class="dev-debug-heading">

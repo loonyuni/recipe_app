@@ -128,7 +128,11 @@ const starterRecipes = [
 ];
 
 const storedRecipes = JSON.parse(localStorage.getItem("kitchen-archive-recipes") || "null");
-const seededRecipes = storedRecipes || starterRecipes;
+// An empty array is truthy, so `stored || starter` would leave a signed-out
+// visitor staring at zero recipes once the cache is ever persisted as []
+// (which happens transiently mid cloud-load and on some sign-out paths).
+// Fall back to the seed recipes unless the cache actually holds something.
+const seededRecipes = storedRecipes?.length ? storedRecipes : starterRecipes;
 
 const state = {
   recipes: seededRecipes,
@@ -184,8 +188,8 @@ const mockMode = queryParams.has("mock");
 const personalImageGallery = personalConfig.imagesBySourceUrl;
 const personalImageGalleryByTitle = personalConfig.imagesByTitle;
 
-const $ = (selector) => document.querySelector(selector);
-const $$ = (selector) => [...document.querySelectorAll(selector)];
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
 // Escape untrusted values before interpolating into innerHTML. Recipes are
 // imported from arbitrary URLs and shared across household members, so titles,
@@ -386,6 +390,87 @@ function formatScaledServings(servings, factor) {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
+// --- Recipe sections (multi-component recipes) ------------------------------
+// A recipe like a flan is several component recipes (pie pastry, flan custard,
+// finishing) that each carry their own ingredients and instructions but belong
+// to one dish. We model that as `recipe.sections`; a plain recipe is a single
+// untitled section. Sections are the source of truth for display and editing.
+// The flat `recipe.ingredients`/`recipe.instructions` are derived projections
+// kept in sync for search, nutrition, and the flat DB columns.
+
+// Clean one raw section into { title, ingredients: [string], instructions:
+// [string] }, coercing whatever shapes import/DB produced into display strings.
+function normalizeSection(section) {
+  const source = section && typeof section === "object" ? section : {};
+  return {
+    title: String(source.title || "").trim(),
+    ingredients: (Array.isArray(source.ingredients) ? source.ingredients : []).map(formatIngredient).filter(Boolean),
+    instructions: (Array.isArray(source.instructions) ? source.instructions : []).map(formatInstruction).filter(Boolean)
+  };
+}
+
+// Drop empty sections; return null when nothing usable remains so callers can
+// fall back to the flat single-section projection.
+function normalizeSections(sections) {
+  if (!Array.isArray(sections)) return null;
+  const cleaned = sections
+    .map(normalizeSection)
+    .filter((section) => section.title || section.ingredients.length || section.instructions.length);
+  return cleaned.length ? cleaned : null;
+}
+
+// The sections to render/edit for a recipe. Prefers explicit sections; a recipe
+// without them (legacy rows, starter recipes) becomes one untitled section from
+// its flat arrays, so single-part recipes keep working unchanged.
+function getSections(recipe) {
+  const explicit = normalizeSections(recipe.sections);
+  if (explicit) return explicit;
+  return [{
+    title: "",
+    ingredients: (recipe.ingredients || []).slice(),
+    instructions: (recipe.instructions || []).slice()
+  }];
+}
+
+// Project sections back into the flat ingredient/instruction arrays. Titled
+// sections contribute a "<title>:" header line, reusing the existing header
+// convention that isIngredientHeader/splitCompoundIngredient already render as
+// sub-headers. Instructions are concatenated in section order.
+function flatIngredientsFromSections(sections) {
+  return sections.flatMap((section) => (section.title ? [`${section.title}:`] : []).concat(section.ingredients));
+}
+function flatInstructionsFromSections(sections) {
+  return sections.flatMap((section) => section.instructions);
+}
+
+// A recipe is "sectioned" (gets the stacked, per-section layout) when it has
+// more than one section or any titled section; otherwise it renders as a single
+// classic Ingredients/Method block.
+function isSectionedRecipe(sections) {
+  return sections.length > 1 || sections.some((section) => section.title);
+}
+
+// Set recipe.sections and keep the derived flat arrays in sync. Idempotent.
+// Called wherever a recipe is created or edited from a section editor.
+function applyRecipeSections(recipe, rawSections) {
+  const sections = normalizeSections(rawSections) || getSections(recipe);
+  recipe.sections = sections;
+  recipe.ingredients = flatIngredientsFromSections(sections);
+  recipe.instructions = flatInstructionsFromSections(sections);
+  recipe.ingredientRecords = recipe.ingredients.map(toIngredientRecord);
+  return recipe;
+}
+
+// Preserve the old default of a placeholder method when a recipe is saved with
+// no instructions anywhere. Drops the placeholder into the first section and
+// re-derives the flat array.
+function ensureInstructions(recipe) {
+  if (recipe.instructions.length) return recipe;
+  recipe.sections[0].instructions = ["Add cooking instructions when you are ready."];
+  recipe.instructions = flatInstructionsFromSections(recipe.sections);
+  return recipe;
+}
+
 function recipeImageUrls(recipe) {
   return [...new Set([recipe.imageUrl, ...(recipe.imageUrls || [])].filter(Boolean))];
 }
@@ -481,7 +566,15 @@ function formatTimeLabel(value) {
 
 function normalizeDraft(draft) {
   const sourceImages = personalImageGallery[draft.sourceUrl] || [];
-  const ingredientRecords = (draft.ingredients || []).map(toIngredientRecord);
+  // Multi-component imports (flan = pastry + custard + finishing) arrive as
+  // `sections`. When present they drive the flat ingredient/instruction arrays
+  // so search/nutrition/preview stay in sync; otherwise fall back to the flat
+  // draft fields (single untitled section).
+  const sections = normalizeSections(draft.sections);
+  const ingredientRecords = (sections ? flatIngredientsFromSections(sections) : (draft.ingredients || [])).map(toIngredientRecord);
+  const instructions = sections
+    ? flatInstructionsFromSections(sections)
+    : (draft.instructions || []).map(formatInstruction).filter(Boolean);
   const extractedImage = typeof draft.imageUrl === "string"
     ? draft.imageUrl
     : draft.image?.url || draft.image?.contentUrl || (Array.isArray(draft.image) ? draft.image[0]?.url || draft.image[0] : "");
@@ -489,10 +582,11 @@ function normalizeDraft(draft) {
   const measurementMode = draft.measurementMode || (/bake|cake|bread|pastry|cookie|muffin|dessert/.test(combinedText) ? "metric" : "both");
   return {
     ...draft,
+    sections: sections || undefined,
     time: formatTime(draft.time) || "45 min",
     ingredients: ingredientRecords.map(formatIngredient).filter(Boolean),
     ingredientRecords,
-    instructions: (draft.instructions || []).map(formatInstruction).filter(Boolean),
+    instructions,
     tags: (draft.tags || []).flatMap((tag) => typeof tag === "string" ? tag.split(",").map((item) => item.trim()) : tag.name || tag.label || "").filter(Boolean),
     measurementMode,
     imageUrl: extractedImage || sourceImages[0] || "",
@@ -531,6 +625,16 @@ function updateAuthButton() {
 function recipeFromRow(row) {
   const nutrition = row.nutrition || {};
   const personalImages = matchingPersonalImages(row.title, row.source_url);
+  // Sections take precedence when present; otherwise the flat columns become a
+  // single untitled section on read (via getSections). When sections do exist,
+  // derive the flat arrays from them so search/nutrition see every component.
+  const sections = normalizeSections(row.sections);
+  const flatIngredients = sections
+    ? flatIngredientsFromSections(sections)
+    : (Array.isArray(row.ingredients) ? row.ingredients.map(formatIngredient) : []);
+  const flatInstructions = sections
+    ? flatInstructionsFromSections(sections)
+    : (Array.isArray(row.instructions) ? row.instructions.map(formatInstruction) : []);
   return {
     id: row.id,
     title: row.title,
@@ -550,9 +654,10 @@ function recipeFromRow(row) {
     rating: 0,
     cooked: 0,
     added: new Date(row.created_at).getTime(),
-    ingredients: Array.isArray(row.ingredients) ? row.ingredients.map(formatIngredient) : [],
-    ingredientRecords: Array.isArray(row.ingredients) ? row.ingredients.map(toIngredientRecord) : [],
-    instructions: Array.isArray(row.instructions) ? row.instructions.map(formatInstruction) : [],
+    sections: sections || undefined,
+    ingredients: flatIngredients,
+    ingredientRecords: flatIngredients.map(toIngredientRecord),
+    instructions: flatInstructions,
     variants: [],
     ratings: [],
     source: row.source_label || row.source_url || "Supabase recipe"
@@ -740,6 +845,7 @@ async function saveRecipeToCloud(recipe) {
     time_minutes: timeMinutes(recipe.time),
     ingredients: recipe.ingredientRecords || recipe.ingredients,
     instructions: recipe.instructions,
+    sections: recipe.sections || [],
     image_url: recipe.imageUrl || null,
     image_urls: recipe.imageUrls || [],
     measurement_mode: recipe.measurementMode || "both",
@@ -768,6 +874,7 @@ async function updateRecipeToCloud(recipe) {
     time_minutes: timeMinutes(recipe.time),
     ingredients: recipe.ingredientRecords || recipe.ingredients,
     instructions: recipe.instructions,
+    sections: recipe.sections || [],
     image_url: recipe.imageUrl || null,
     image_urls: recipe.imageUrls || [],
     measurement_mode: recipe.measurementMode || "both",
@@ -1297,10 +1404,13 @@ function applyDrawerScaling() {
   const recipe = state.activeRecipe;
   if (!recipe) return;
   const factor = drawerScale;
+  const sections = getSections(recipe);
 
-  const list = $("#ingredient-list");
-  if (list) {
-    list.innerHTML = normalizeIngredientList(recipe.ingredients || []).map((ingredient, index) => {
+  // Fill every section's ingredient list (there may be several). The one global
+  // factor applies to all of them, so each list scales together.
+  $$(".scaled-ingredient-list").forEach((list) => {
+    const ingredients = sections[Number(list.dataset.section) || 0]?.ingredients || [];
+    list.innerHTML = normalizeIngredientList(ingredients).map((ingredient, index) => {
       if (isIngredientHeader(ingredient)) return `<li class="ingredient-header">${esc(ingredient)}</li>`;
       const scaled = scaleIngredient(ingredient, factor);
       if (!scaled.scaled) return `<li class="ingredient-static">${esc(ingredient)}</li>`;
@@ -1311,7 +1421,7 @@ function applyDrawerScaling() {
       </li>`;
     }).join("");
     $$(".ingredient-qty", list).forEach((input) => input.addEventListener("change", onIngredientQtyChange));
-  }
+  });
 
   const summary = $("#scale-summary");
   if (summary) {
@@ -1355,6 +1465,50 @@ function openDrawer(id) {
     ...cloud.members.map((member) => member.display_name),
     ...ratings.map((rating) => rating.member)
   ])].filter((member) => !hiddenReviewers.has(String(member).trim().toLowerCase()));
+
+  // Ingredients + method region. A single untitled section renders as the
+  // classic Ingredients/Method layout; titled or multiple sections stack as
+  // per-component blocks. The scale panel appears once and drives every
+  // section's ingredient list through the same global factor. The ingredient
+  // <ul>s are filled by applyDrawerScaling (keyed by data-section); the method
+  // lists are static (instructions don't scale).
+  const sections = getSections(recipe);
+  const scalePanelHtml = `
+    <div class="scale-panel">
+      <div class="scale-controls" id="scale-controls">
+        <span class="scale-eyebrow">Scale recipe</span>
+        <div class="scale-buttons">
+          <button type="button" class="scale-button" data-scale="1">1×</button>
+          <button type="button" class="scale-button" data-scale="2">2×</button>
+          <button type="button" class="scale-button" data-scale="3">3×</button>
+        </div>
+        <button type="button" class="ghost-button scale-reset" id="scale-reset">Reset to 1×</button>
+      </div>
+      <p class="scale-summary" id="scale-summary"></p>
+      <p class="scale-hint">Tip: type any ingredient's quantity (e.g. what you actually have) and the rest scale to match.</p>
+    </div>`;
+  const methodListHtml = (section) => `<ol class="instruction-list">${section.instructions.map((step) => `<li>${esc(step)}</li>`).join("")}</ol>`;
+  const ingredientsMethodHtml = isSectionedRecipe(sections)
+    ? `
+    <hr class="drawer-rule" />
+    <h3 class="drawer-section-title">Ingredients &amp; method</h3>
+    ${scalePanelHtml}
+    ${sections.map((section, index) => `
+    <div class="recipe-section">
+      ${section.title ? `<h4 class="recipe-section-title">${esc(section.title)}</h4>` : ""}
+      ${section.ingredients.length ? `<p class="recipe-section-label">Ingredients</p>
+      <ul class="ingredient-list scaled-ingredient-list" data-section="${index}"></ul>` : ""}
+      ${section.instructions.length ? `<p class="recipe-section-label">Method</p>
+      ${methodListHtml(section)}` : ""}
+    </div>`).join("")}`
+    : `
+    <hr class="drawer-rule" />
+    <h3 class="drawer-section-title">Ingredients</h3>
+    ${scalePanelHtml}
+    <ul class="ingredient-list scaled-ingredient-list" id="ingredient-list" data-section="0"></ul>
+    <h3 class="drawer-section-title">Method</h3>
+    ${methodListHtml(sections[0])}`;
+
   $("#drawer-content").innerHTML = `
     <p class="eyebrow">Recipe archive · ${esc(recipe.source || "Personal recipe")}</p>
     <h2 class="drawer-title" id="drawer-title">${esc(recipe.title)}</h2>
@@ -1385,24 +1539,7 @@ function openDrawer(id) {
     <p class="nutrition-empty">Nutrition hasn't been calculated for this recipe yet.</p>
     <button type="button" class="ghost-button" id="estimate-nutrition-button">Estimate nutrition</button>
     `}
-    <hr class="drawer-rule" />
-    <h3 class="drawer-section-title">Ingredients</h3>
-    <div class="scale-panel">
-      <div class="scale-controls" id="scale-controls">
-        <span class="scale-eyebrow">Scale recipe</span>
-        <div class="scale-buttons">
-          <button type="button" class="scale-button" data-scale="1">1×</button>
-          <button type="button" class="scale-button" data-scale="2">2×</button>
-          <button type="button" class="scale-button" data-scale="3">3×</button>
-        </div>
-        <button type="button" class="ghost-button scale-reset" id="scale-reset">Reset to 1×</button>
-      </div>
-      <p class="scale-summary" id="scale-summary"></p>
-      <p class="scale-hint">Tip: type any ingredient's quantity (e.g. what you actually have) and the rest scale to match.</p>
-    </div>
-    <ul class="ingredient-list scaled-ingredient-list" id="ingredient-list"></ul>
-    <h3 class="drawer-section-title">Method</h3>
-    <ol class="instruction-list">${recipe.instructions.map((step) => `<li>${esc(step)}</li>`).join("")}</ol>
+    ${ingredientsMethodHtml}
     <hr class="drawer-rule" />
     <h3 class="drawer-section-title">Family ratings · ★ ${averageRating(recipe).toFixed(1)} overall</h3>
     <div class="family-rating">${ratings.map((rating) => `
@@ -1491,10 +1628,76 @@ function openDrawer(id) {
 
 function closeDrawer() { $("#recipe-drawer").hidden = true; state.activeRecipe = null; }
 
+// --- Section editor (manual form + import review) ---------------------------
+// Both forms edit ingredients/method through a [data-section-editor] container
+// holding one card per section (title + ingredients textarea + method
+// textarea), plus add/remove controls. One untitled card is the simple recipe;
+// extra cards are the pastry-school components. Read back into a sections array
+// on submit.
+
+function sectionEditorCardHtml(section) {
+  const lines = (list) => (Array.isArray(list) ? list : []).join("\n");
+  return `
+    <div class="section-editor-card" data-section-card>
+      <div class="section-editor-head">
+        <input class="section-editor-title" data-section-title placeholder="Section name (optional, e.g. Pie pastry)" value="${escAttr(section?.title || "")}" />
+        <button type="button" class="ghost-button section-editor-remove" data-section-remove aria-label="Remove section">Remove</button>
+      </div>
+      <label>Ingredients
+        <textarea class="section-editor-ingredients" data-section-ingredients rows="4" placeholder="150 g flour&#10;6 g salt">${esc(lines(section?.ingredients))}</textarea>
+      </label>
+      <label>Method
+        <textarea class="section-editor-instructions" data-section-instructions rows="4" placeholder="Rub the butter into the flour...&#10;Chill for 30 minutes...">${esc(lines(section?.instructions))}</textarea>
+      </label>
+    </div>`;
+}
+
+// Read the editor's current DOM state into a raw sections array (empty sections
+// are dropped later by normalizeSections).
+function readSectionEditor(container) {
+  const splitLines = (value) => String(value || "").split("\n").map((line) => line.trim()).filter(Boolean);
+  return $$("[data-section-card]", container).map((card) => ({
+    title: $("[data-section-title]", card).value.trim(),
+    ingredients: splitLines($("[data-section-ingredients]", card).value),
+    instructions: splitLines($("[data-section-instructions]", card).value)
+  }));
+}
+
+// Render the section cards (always at least one). Remove buttons are hidden when
+// a single section remains, since every recipe needs one.
+function renderSectionEditor(container, sections) {
+  const cards = $(".section-editor-cards", container);
+  const list = (Array.isArray(sections) && sections.length) ? sections : [{ title: "", ingredients: [], instructions: [] }];
+  cards.innerHTML = list.map(sectionEditorCardHtml).join("");
+  const removeButtons = $$("[data-section-remove]", container);
+  removeButtons.forEach((button) => {
+    button.hidden = removeButtons.length <= 1;
+    button.addEventListener("click", () => {
+      const current = readSectionEditor(container);
+      current.splice([...cards.children].indexOf(button.closest("[data-section-card]")), 1);
+      renderSectionEditor(container, current);
+    });
+  });
+}
+
+// Render the editor and wire the "Add section" button once (guarded so repeated
+// opens don't stack listeners).
+function setupSectionEditor(container, sections) {
+  renderSectionEditor(container, sections);
+  const addButton = $(".section-editor-add", container);
+  if (addButton && !addButton.dataset.wired) {
+    addButton.dataset.wired = "1";
+    addButton.addEventListener("click", () => {
+      renderSectionEditor(container, [...readSectionEditor(container), { title: "", ingredients: [], instructions: [] }]);
+    });
+  }
+}
+
 function openModal() {
   state.editingRecipeId = null;
   $("#modal-eyebrow").textContent = "Add to the archive";
   $("#modal-title").textContent = "New recipe";
+  setupSectionEditor($("#recipe-section-editor"), null);
   $("#recipe-modal").hidden = false;
   setTimeout(() => document.querySelector('[name="title"]').focus(), 0);
 }
@@ -1509,8 +1712,7 @@ function openEditModal(recipe) {
   form.servings.value = recipe.servings || "";
   form.tags.value = (recipe.tags || []).join(", ");
   form.description.value = recipe.description || "";
-  form.ingredients.value = (recipe.ingredients || []).join("\n");
-  form.instructions.value = (recipe.instructions || []).join("\n");
+  setupSectionEditor($("#recipe-section-editor"), getSections(recipe));
   $("#recipe-modal").hidden = false;
   closeDrawer();
   setTimeout(() => form.title.focus(), 0);
@@ -1738,8 +1940,8 @@ async function showImportReview() {
     form.description.value = draft.description || "";
     form.imageUrl.value = draft.imageUrl || "";
     form.measurementMode.value = draft.measurementMode || "both";
-    form.ingredients.value = (draft.ingredients || []).join("\n");
-    form.instructions.value = (draft.instructions || []).join("\n");
+    setupSectionEditor($("#import-section-editor"), getSections(draft));
+    form.customTags.value = "";
     $("#import-image-preview").hidden = !draft.imageUrl;
     if (draft.imageUrl) $("#import-image").src = draft.imageUrl;
     const gallery = $("#import-image-gallery");
@@ -1867,8 +2069,7 @@ $("#recipe-form").addEventListener("submit", (event) => {
   const data = new FormData(event.target);
   const title = data.get("title").trim();
   const tags = (data.get("tags") || "").split(",").map((tag) => tag.trim()).filter(Boolean);
-  const ingredients = (data.get("ingredients") || "").split("\n").map((item) => item.trim()).filter(Boolean);
-  const instructions = (data.get("instructions") || "").split("\n").map((item) => item.trim()).filter(Boolean);
+  const sections = readSectionEditor($("#recipe-section-editor"));
   if (state.editingRecipeId) {
     const recipe = state.recipes.find((item) => item.id === state.editingRecipeId);
     if (!recipe) return;
@@ -1877,11 +2078,10 @@ $("#recipe-form").addEventListener("submit", (event) => {
       description: data.get("description") || "",
       time: Number.parseInt(data.get("time"), 10) || 30,
       servings: Number.parseInt(data.get("servings"), 10) || 4,
-      tags: tags.length ? tags : ["new"],
-      ingredients,
-      ingredientRecords: ingredients.map((item) => ({ original: item, metric: "" })),
-      instructions: instructions.length ? instructions : ["Add cooking instructions when you are ready."]
+      tags: tags.length ? tags : ["new"]
     });
+    applyRecipeSections(recipe, sections);
+    ensureInstructions(recipe);
     closeModal();
     // Persist locally and refresh the UI first so the edit survives even if the
     // cloud write fails (otherwise it lived only in memory and reverted on
@@ -1909,13 +2109,12 @@ $("#recipe-form").addEventListener("submit", (event) => {
     rating: 0,
     cooked: 0,
     added: Date.now(),
-    ingredients,
-    ingredientRecords: ingredients.map((item) => ({ original: item, metric: "" })),
-    instructions: instructions.length ? instructions : ["Add cooking instructions when you are ready."],
     variants: [],
     ratings: [],
     source: "Added manually"
   };
+  applyRecipeSections(recipe, sections);
+  ensureInstructions(recipe);
   closeModal();
   persistNewRecipe(recipe);
 });
@@ -1923,6 +2122,10 @@ $("#import-review-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const data = new FormData(event.target);
   const selectedTags = $$("[data-suggested-tag].is-selected").map((button) => button.dataset.suggestedTag);
+  // Fold in any labels the user typed themselves, then de-dupe against the
+  // selected suggestion chips so an added-and-suggested label isn't doubled.
+  const customTags = (data.get("customTags") || "").split(",").map((item) => item.trim()).filter(Boolean);
+  const tags = [...new Set([...selectedTags, ...customTags])];
   const title = data.get("title").trim();
   const recipe = {
     id: `${Date.now()}-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
@@ -1930,7 +2133,7 @@ $("#import-review-form").addEventListener("submit", (event) => {
     description: data.get("description"),
     time: Number.parseInt(data.get("time"), 10) || 45,
     servings: Number.parseInt(data.get("servings"), 10) || 4,
-    tags: selectedTags.length ? selectedTags : ["new recipe"],
+    tags: tags.length ? tags : ["new recipe"],
     imageClass: "new",
     imageUrl: data.get("imageUrl") || state.activeImportDraft?.imageUrl || "",
     imageUrls: state.activeImportDraft?.imageUrls || [],
@@ -1939,14 +2142,12 @@ $("#import-review-form").addEventListener("submit", (event) => {
     rating: 0,
     cooked: 0,
     added: Date.now(),
-    ingredients: data.get("ingredients").split("\n").map((item) => item.trim()).filter(Boolean),
-    ingredientRecords: state.activeImportDraft?.ingredientRecords || data.get("ingredients").split("\n").map((item) => ({ original: item.trim(), metric: "" })).filter((item) => item.original),
-    instructions: data.get("instructions").split("\n").map((item) => item.trim()).filter(Boolean),
     variants: [],
     ratings: [],
     source: "Distilled import · review required",
     sourceUrl: state.activeImportDraft?.sourceUrl || ""
   };
+  applyRecipeSections(recipe, readSectionEditor($("#import-section-editor")));
   closeImportModal();
   state.activeImportDraft = null;
   persistNewRecipe(recipe);

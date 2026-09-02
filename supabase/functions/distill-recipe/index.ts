@@ -11,6 +11,14 @@ type Nutrition = {
   fat: number;
 };
 
+// A component of a multi-part recipe (e.g. a flan's pie pastry, flan custard,
+// and finishing), each with its own ingredients and instructions.
+type RecipeSection = {
+  title: string;
+  ingredients: string[];
+  instructions: string[];
+};
+
 type RecipeDraft = {
   title: string;
   description: string;
@@ -22,6 +30,9 @@ type RecipeDraft = {
   imageUrl?: string;
   measurementMode?: "both" | "original" | "metric";
   nutrition?: Nutrition;
+  // Present only for multi-component recipes; single-component recipes use the
+  // flat ingredients/instructions above.
+  sections?: RecipeSection[];
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -235,7 +246,7 @@ async function callModel(sourceText: string, sourceUrl: string): Promise<RecipeD
   const model = Deno.env.get("LLM_MODEL") || (provider === "anthropic" ? "claude-haiku-4-5-20251001" : "");
   if (!apiKey || !model) return null;
 
-  const systemPrompt = "You clean recipe webpages into structured data. Ignore stories, ads, navigation, author biographies, and newsletter text. Never invent missing quantities. Return JSON only with title, description, servings, time, ingredients, instructions, tags, measurementMode, imageUrl when known, and nutrition. IMPORTANT: time must be a plain string such as '45 minutes'; ingredients must be an array of plain strings such as '150 g salmon fillet, skinless'; instructions must be an array of plain strings; tags must be an array of plain strings; measurementMode must be 'both', 'original', or 'metric'. Never return ingredient or time objects. Keep original quantities alongside metric conversions when conversion is reliable; prefer metric for baking. nutrition must be an object with numeric fields calories, protein, carbs, and fat estimating the values PER SINGLE SERVING (grams for protein/carbs/fat, kcal for calories). If the page states nutrition, use it; otherwise estimate from the ingredients and servings. Round to whole numbers. Never return zeros unless the recipe genuinely has none.";
+  const systemPrompt = "You clean recipe webpages into structured data. Ignore stories, ads, navigation, author biographies, and newsletter text. Never invent missing quantities. Return JSON only with title, description, servings, time, ingredients, instructions, tags, measurementMode, imageUrl when known, and nutrition. IMPORTANT: time must be a plain string such as '45 minutes'; ingredients must be an array of plain strings such as '150 g salmon fillet, skinless'; instructions must be an array of plain strings; tags must be an array of plain strings; measurementMode must be 'both', 'original', or 'metric'. Never return ingredient or time objects. Keep original quantities alongside metric conversions when conversion is reliable; prefer metric for baking. When a recipe is made of several distinct components that are prepared separately (for example a tart with a pie pastry, a custard filling, and a finishing/topping, common in pastry recipes), ALSO return a 'sections' array. Each element is an object { title, ingredients, instructions } where title names the component (e.g. 'Pie pastry', 'Flan custard', 'Finishing'), and ingredients and instructions are arrays of plain strings for that component only, following the same rules as above. Put each component's own steps in its own section. Also fill the top-level flat ingredients and instructions arrays with every component combined, in order, so older clients still work. Omit 'sections' entirely for a simple single-component recipe. nutrition must be an object with numeric fields calories, protein, carbs, and fat estimating the values PER SINGLE SERVING (grams for protein/carbs/fat, kcal for calories). If the page states nutrition, use it; otherwise estimate from the ingredients and servings. Round to whole numbers. Never return zeros unless the recipe genuinely has none.";
   const userPrompt = JSON.stringify({ sourceUrl, sourceText });
   if (provider === "anthropic") {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -247,7 +258,7 @@ async function callModel(sourceText: string, sourceUrl: string): Promise<RecipeD
       },
       body: JSON.stringify({
         model,
-        max_tokens: 1800,
+        max_tokens: 4000,
         temperature: 0.1,
         system: systemPrompt,
         messages: [{ role: "user", content: userPrompt }]
