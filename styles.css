@@ -65,7 +65,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .icon-button { border: 0; color: var(--red); background: transparent; font-size: 20px; line-height: 1; cursor: pointer; }
 .sidebar-heading-actions { display: flex; align-items: center; gap: 8px; }
 .sidebar-heading-actions .icon-button { font-size: 15px; }
-.label-list { display: grid; gap: 3px; }
+.label-list { display: grid; gap: 3px; max-height: 320px; overflow-y: auto; }
 .label-item { display: flex; align-items: center; gap: 9px; padding: 8px 12px; color: var(--muted); border-radius: 6px; cursor: pointer; }
 .label-item:hover { color: var(--ink); background: var(--paper-deep); }
 .label-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sage); }
