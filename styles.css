@@ -165,6 +165,24 @@ h2 span { color: var(--muted); font: 400 11px var(--mono); vertical-align: middl
 .ingredient-list, .instruction-list { padding-left: 20px; color: var(--ink); line-height: 1.65; }
 .ingredient-list li, .instruction-list li { margin: 8px 0; padding-left: 4px; }
 .ingredient-list li::marker { color: var(--red); }
+.batch-total { margin: -14px 0 10px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.batch-total strong { color: var(--red); }
+.scale-panel { margin: 0 0 16px; padding: 13px 15px; background: #f4eee3; border: 1px solid var(--line); border-radius: 4px; }
+.scale-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.scale-eyebrow { color: var(--muted); font: 500 10px var(--mono); letter-spacing: .11em; text-transform: uppercase; }
+.scale-buttons { display: flex; gap: 6px; }
+.scale-button { border: 1px solid var(--line); border-radius: 4px; padding: 6px 12px; background: transparent; color: var(--ink); font-weight: 700; font-size: 12px; }
+.scale-button:hover { background: var(--paper-deep); }
+.scale-button.is-active { border-color: var(--red); background: var(--red); color: white; }
+.scale-reset { margin-left: auto; padding: 6px 11px; font-size: 11px; }
+.scale-summary { margin: 11px 0 0; color: var(--ink); font: 500 13px var(--display); }
+.scale-hint { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+.scaled-ingredient-list { list-style: none; padding-left: 0; }
+.scaled-ingredient-list li { display: flex; align-items: baseline; gap: 8px; }
+.scaled-ingredient-list .ingredient-static { padding-left: 4px; color: var(--muted); }
+.ingredient-qty { width: 72px; flex: none; padding: 5px 7px; border: 1px solid var(--line); border-radius: 4px; background: var(--white); color: var(--ink); font: 500 13px var(--mono); text-align: right; }
+.ingredient-qty:hover { border-color: var(--red); }
+.ingredient-rest { flex: 1; }
 .variant-card { padding: 13px; margin-top: 9px; background: #f4eee3; border-left: 3px solid var(--red); }
 .variant-card strong { display: block; margin-bottom: 5px; font: 500 15px var(--display); }
 .variant-card p { margin: 0; color: var(--muted); font-size: 11px; }
