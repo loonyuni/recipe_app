@@ -324,6 +324,60 @@ function scaleIngredient(text, factor) {
   };
 }
 
+// Imported recipes often pack several ingredients into one line, sometimes
+// under a section label, e.g.
+//   "Leavened dough: 150 g flour, 6 g salt, 45 g sugar"
+// The scaling UI needs one quantity per line, so split that into
+//   ["Leavened dough:", "150 g flour", "6 g salt", "45 g sugar"]
+// A leading label (text before a colon that isn't itself a quantity) becomes
+// its own static header line. The remainder is split on commas only where the
+// next piece starts with its own quantity, so trailing notes stay attached:
+// "4 cloves garlic, sliced" and "2 oranges, zested" are left as single lines.
+function splitCompoundIngredient(line) {
+  const text = String(line ?? "").trim();
+  if (!text) return [];
+  const out = [];
+  let body = text;
+  const colon = text.indexOf(":");
+  if (colon > 0) {
+    const label = text.slice(0, colon).trim();
+    if (label && !parseLeadingQuantity(label)) {
+      out.push(`${label}:`);
+      body = text.slice(colon + 1).trim();
+    }
+  }
+  if (!body) return out;
+  let current = "";
+  body.split(/,\s*/).forEach((segment, index) => {
+    const seg = segment.trim();
+    if (!seg) return;
+    // The first segment opens an ingredient; a later one that starts with its
+    // own quantity opens a new ingredient, otherwise it's a note ("sliced",
+    // "at room temperature") that belongs to the previous line.
+    if (index === 0 || parseLeadingQuantity(seg)) {
+      if (current) out.push(current);
+      current = seg;
+    } else {
+      current += `, ${seg}`;
+    }
+  });
+  if (current) out.push(current);
+  return out;
+}
+
+// Expand every line of an ingredient list through splitCompoundIngredient.
+// Idempotent: already-atomic lines pass through unchanged.
+function normalizeIngredientList(list) {
+  return (Array.isArray(list) ? list : []).flatMap(splitCompoundIngredient);
+}
+
+// A split-off section label like "Leavened dough:" — rendered as a sub-header,
+// not a scalable ingredient.
+function isIngredientHeader(line) {
+  const text = String(line ?? "").trim();
+  return text.endsWith(":") && !parseLeadingQuantity(text);
+}
+
 // Servings scale with the recipe; round to the nearest 0.5 and show "4" or
 // "4.5" (never "4.0").
 function formatScaledServings(servings, factor) {
@@ -1246,7 +1300,8 @@ function applyDrawerScaling() {
 
   const list = $("#ingredient-list");
   if (list) {
-    list.innerHTML = (recipe.ingredients || []).map((ingredient, index) => {
+    list.innerHTML = normalizeIngredientList(recipe.ingredients || []).map((ingredient, index) => {
+      if (isIngredientHeader(ingredient)) return `<li class="ingredient-header">${esc(ingredient)}</li>`;
       const scaled = scaleIngredient(ingredient, factor);
       if (!scaled.scaled) return `<li class="ingredient-static">${esc(ingredient)}</li>`;
       const rest = scaled.rest.replace(/^\s+/, "");
