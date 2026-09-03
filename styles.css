@@ -309,3 +309,22 @@ h2 span { color: var(--muted); font: 400 11px var(--mono); vertical-align: middl
   .import-tabs { overflow-x: auto; }
   .import-tab { white-space: nowrap; }
 }
+
+/* Multi-section recipes: stacked component blocks in the drawer */
+.recipe-section { margin: 0 0 22px; }
+.recipe-section:last-child { margin-bottom: 0; }
+.recipe-section-title { margin: 0 0 10px; font: 500 16px var(--display); color: var(--red); }
+.recipe-section-label { margin: 14px 0 6px; color: var(--muted); font: 500 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.recipe-section .instruction-list { margin-top: 0; }
+
+/* Section editor (manual form + import review) */
+.section-editor { display: grid; gap: 12px; }
+.section-editor-label-row { display: grid; gap: 4px; }
+.section-editor-label { color: var(--muted); font: 10px var(--mono); text-transform: uppercase; letter-spacing: .05em; }
+.section-editor-label-row .field-note { margin: 0; }
+.section-editor-cards { display: grid; gap: 14px; }
+.section-editor-card { display: grid; gap: 9px; padding: 13px; background: #f4eee3; border: 1px solid var(--line); border-radius: 4px; }
+.section-editor-head { display: flex; align-items: center; gap: 10px; }
+.section-editor-title { flex: 1; }
+.section-editor-remove { flex: none; padding: 6px 11px; font-size: 11px; }
+.section-editor-add { justify-self: start; }

@@ -30,6 +30,10 @@ create table if not exists public.recipes (
   time_minutes integer check (time_minutes is null or time_minutes >= 0),
   ingredients jsonb not null default '[]'::jsonb,
   instructions jsonb not null default '[]'::jsonb,
+  -- Multi-component recipes (e.g. flan = pie pastry + custard + finishing).
+  -- Each element is { title, ingredients: [], instructions: [] }. Empty for
+  -- single-component recipes, which use the flat ingredients/instructions above.
+  sections jsonb not null default '[]'::jsonb,
   nutrition jsonb not null default '{}'::jsonb,
   source_label text,
   source_url text,
