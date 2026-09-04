@@ -12,6 +12,8 @@ Open **SQL Editor**, create a new query, paste in [`supabase-schema.sql`](./supa
 
 If the app reports `permission denied for table household_members`, run [`supabase-permissions-fix.sql`](./supabase-permissions-fix.sql) as a third query.
 
+To enable public recipe sharing / permalinks, run [`supabase-public-sharing.sql`](./supabase-public-sharing.sql). It adds `is_public` + `slug` columns, a `public_recipes` read-only view (the only thing `anon` can read: public rows, safe columns), and the `publish_recipe(uuid, boolean)` RPC used by the drawer's Share toggle.
+
 ## 3. Create the browser config
 
 Copy `supabase-config.example.js` to `supabase-config.js` and fill in the project URL and browser-safe anon key from the project API settings.

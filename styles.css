@@ -328,3 +328,8 @@ h2 span { color: var(--muted); font: 400 11px var(--mono); vertical-align: middl
 .section-editor-title { flex: 1; }
 .section-editor-remove { flex: none; padding: 6px 11px; font-size: 11px; }
 .section-editor-add { justify-self: start; }
+
+/* Public sharing */
+.readonly-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 8px; padding: 10px 14px; background: var(--paper-deep); border: 1px solid var(--line); border-radius: 6px; color: var(--muted); font-size: 12px; }
+.readonly-banner .ghost-button { flex: none; }
+.share-hint { margin: 8px 0 0; color: var(--sage); font: 500 11px var(--mono); letter-spacing: .04em; }
