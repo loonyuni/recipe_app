@@ -45,7 +45,7 @@ Non-goals: comments, multi-user social features, offline-first rework, redesigni
 - RLS: household members may `select`/`insert`/`delete` cook logs for recipes in their household (membership check through the recipe's household). No anon access to the table.
 - `log_cook(target_recipe uuid)` security-definer RPC: membership-checked, inserts a row `cooked_by = auth.uid()`, returns the new count.
 - **Public exposure = aggregate only.** Extend `public_recipes` view with `cook_count` (count of cook_log rows) and `last_cooked_at` (max). Individual rows (who/when/note) stay private.
-- Frontend: a **"Made this"** button on the detail view (authed owners only). On click → `log_cook` → optimistic count bump. Display `Made N times · last made <relative>`; optional `Made N×` badge on cards.
+- Frontend: a **"Made this"** button on the detail view (authed owners only). On click → `log_cook` → optimistic count bump. Display `Made N times · last made <relative>` on the detail page **and a `Made N×` badge on the grid cards** (decision: badge on cards too).
 - Household load computes per-recipe `cookCount` / `lastCookedAt` (one aggregated query). Anon reads them from the view.
 - **"Recently cooked" tab** = recipes with `cookCount > 0`, sorted by `lastCookedAt desc`. Update `filteredRecipes()` to use these instead of the dead `cooked` field. Seed recipes keep working (map their static `cooked` into `cookCount` for the offline/no-cloud case).
 
@@ -60,10 +60,8 @@ Non-goals: comments, multi-user social features, offline-first rework, redesigni
   `NOT r.is_hidden AND (h.public_library OR r.is_public)`.
   So with `public_library` on, the whole library is public except recipes explicitly hidden; with it off, behavior is exactly today's per-recipe sharing.
 - **Slugs for everything.** With `public_library` on, every visible recipe needs a permalink. Add a `before insert or update of title` trigger on `recipes` that assigns a unique slug from the title when `slug is null` (reusing the same slugify + uniqueness loop as `publish_recipe`). This also backfills imports (e.g. the two recipes just added have no slug yet). One-time backfill for existing rows in the migration.
-- Owner controls on the detail view adapt to `public_library`:
-  - `public_library` on → show "Copy link" + "Hide from public" (toggles `is_hidden`).
-  - `public_library` off → keep today's per-recipe "Share recipe" / "Stop sharing".
-- **Settings toggle.** Wire the existing sidebar "⚙ Settings" button to a small panel with a "Public library (demo mode)" switch (owner only), backed by a `set_public_library(enabled boolean)` security-definer RPC scoped to the caller's household (there is no `households` update RLS policy today, so an RPC is cleaner than adding one).
+- Owner controls on the detail view (decision: **hide-only**): show "Copy link" + "Hide from public" (toggles `is_hidden`). The per-recipe "Share / Stop sharing" buttons are removed from the UI since demo mode makes the whole library public. The `is_public` column and `publish_recipe` RPC stay in the DB (harmless, and available if demo mode is later turned off), just not surfaced in the UI.
+- **Settings toggle** (decision: **small inline panel**). Wire the existing sidebar "⚙ Settings" button to a lightweight popover with a "Public library (demo mode)" switch (owner only), backed by a `set_public_library(enabled boolean)` security-definer RPC scoped to the caller's household (there is no `households` update RLS policy today, so an RPC is cleaner than adding one).
 - Enable `public_library = true` for the owner's household in the migration (that is the whole point of the request), leaving `is_hidden` for exceptions.
 - **Privacy note:** this makes every non-hidden recipe readable by anyone with the link on a public site. Reversible by flipping the switch off. Called out explicitly; the owner opted in.
 
@@ -103,8 +101,8 @@ Applied via the Supabase Management API SQL path (documented in memory). All add
 - **Drawer removal:** a focused rewrite of the view layer; the detail markup is reused, so content/logic risk is low, but every card/keyboard/permalink entry point must route through `showRecipe`. Covered by tests.
 - **Cook count on public view:** intentional (fun social proof); only the aggregate is exposed, never who/when.
 
-## Open questions for review
+## Resolved decisions
 
-1. Cards: show a `Made N×` badge, or keep counts on the detail page only?
-2. Settings: a small inline panel is planned; acceptable, or do you want a full settings modal?
-3. Keep per-recipe "Share/Stop sharing" controls at all once demo mode is the default, or is "Hide from public" enough?
+1. Cook count: show a `Made N×` badge on cards **and** the count on the detail page.
+2. Settings: **small inline popover** off the sidebar ⚙ button.
+3. Sharing UI: **hide-only** in demo mode (Copy link + Hide from public); per-recipe Share buttons removed from the UI (DB path retained).
