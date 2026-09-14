@@ -59,6 +59,8 @@ Audit finding (2026-09-14): all ~85 cloud recipes have zero ratings. The rating-
 - **Sorting** (dropdown): add **"Most cooked"** (cook count desc) alongside the existing "Highest rated", recent, title, time. Separate options.
 - **Filter by rating:** add a minimum-rating filter (e.g. only 4+ or 4.5+ stars) in the filter row, next to tag filters. This replaces the dead Favorites tab: filter/sort by rating for your best-rated; sort by Most cooked for your go-tos.
 
+**Rating persistence (verified + one gap to close).** `saveRatingToCloud` (app.js) correctly writes to the `ratings` table when signed in; verified end-to-end on 2026-09-14 by inserting as the `authenticated` role under RLS (succeeded, aggregated, cleaned up). The empty DB was just "nothing rated while signed in." Gap: ratings entered signed-out or offline persist only in `localStorage` (`kitchen-archive-manual-ratings`) and are never uploaded — `loadCloudRecipesInner` merges them for display but does not push them. Fix: on sign-in, backfill any localStorage-only ratings to the cloud (then drop the local copy), so nothing is stranded. Going forward the open homepage is read-only when signed out, so no new local-only ratings accrue.
+
 ### E. Open homepage: the whole library is public, read-only
 
 The app is built for one person (the owner). Viewing is fully open with no login: the public library **is** the homepage. This is not a "demo mode" and there is no prominent toggle. Editing still requires being the owner (see F); only viewing is open.
