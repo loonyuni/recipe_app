@@ -343,6 +343,14 @@
             <button type="submit" class="primary-button" id="auth-submit">Sign in <span>↗</span></button>
           </div>
         </form>
+        <div class="auth-otp">
+          <p class="auth-otp-or">or skip the password</p>
+          <button type="button" class="ghost-button" id="auth-otp-button">Email me a sign-in code</button>
+          <div id="otp-fields" hidden>
+            <label>6-digit code<input id="otp-input" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" /></label>
+            <button type="button" class="primary-button" id="otp-verify-button">Verify code <span>↗</span></button>
+          </div>
+        </div>
       </section>
     </div>
 

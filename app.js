@@ -651,6 +651,7 @@ function recipeFromRow(row) {
     tags: Array.isArray(row.tags) ? row.tags : [],
     slug: row.slug || null,
     isPublic: Boolean(row.is_public),
+    isHidden: Boolean(row.is_hidden),
     imageClass: "new",
     sourceUrl: row.source_url || "",
     imageUrl: row.image_url || personalImages[0] || "",
@@ -793,6 +794,21 @@ async function loadCloudRecipesInner() {
       const cloudMembers = new Set(cloudRatings.map((rating) => rating.member));
       recipe.ratings = [...cloudRatings, ...localRatings.filter((rating) => !cloudMembers.has(rating.member))];
     });
+    // Backfill ratings that only ever lived in localStorage (entered offline or
+    // signed-out) so they persist to the cloud instead of being stranded. Once
+    // uploaded, drop the local copy so it isn't re-sent on the next load.
+    for (const recipe of state.recipes) {
+      const cloudMembers = new Set((ratingsByRecipe.get(recipe.id) || []).map((rating) => rating.member));
+      const localOnly = (savedRatings[normalizeRecipeTitle(recipe.title)] || []).filter((rating) => !cloudMembers.has(rating.member));
+      for (const rating of localOnly) {
+        try {
+          await saveRatingToCloud(recipe, rating);
+          removeManualRating(recipe, rating.member);
+        } catch (backfillError) {
+          console.warn("Rating backfill skipped:", backfillError.message);
+        }
+      }
+    }
     const { data: recipeTags, error: tagsError } = await cloud.client
       .from("recipe_tags")
       .select("recipe_id, tags(name)")
@@ -1071,6 +1087,12 @@ function openAuthModal() {
 function closeAuthModal() {
   $("#auth-modal").hidden = true;
   $("#auth-form").reset();
+  const otpFields = $("#otp-fields");
+  if (otpFields) otpFields.hidden = true;
+  const otpInput = $("#otp-input");
+  if (otpInput) otpInput.value = "";
+  const otpButton = $("#auth-otp-button");
+  if (otpButton) otpButton.textContent = "Email me a sign-in code";
 }
 
 async function persistNewRecipe(recipe) {
@@ -1664,7 +1686,26 @@ async function unshareRecipe(recipe) {
 
 async function copyShareLink(recipe) {
   const copied = await copyToClipboard(shareLinkFor(recipe));
-  showToast(copied ? "Share link copied to clipboard." : shareLinkFor(recipe));
+  showToast(copied ? "Link copied to clipboard." : shareLinkFor(recipe));
+}
+
+// Toggle a recipe's visibility on the public homepage (owner only). is_hidden
+// is a plain column update under the existing recipes RLS (household members).
+async function setRecipeHidden(recipe, hidden) {
+  if (!cloud.connected || !cloud.client || !cloud.householdId) { showToast("Sign in to change visibility."); return; }
+  try {
+    const { error } = await cloud.client.from("recipes")
+      .update({ is_hidden: hidden })
+      .eq("id", recipe.id)
+      .eq("household_id", cloud.householdId);
+    if (error) throw error;
+    recipe.isHidden = hidden;
+    showToast(hidden ? "Hidden from the public homepage." : "Now public.");
+    render();
+  } catch (error) {
+    console.error(error);
+    showToast(`Couldn't update visibility: ${error.message || "unknown error"}`);
+  }
 }
 
 // --- Recently viewed + cook tracking ---------------------------------------
@@ -1864,12 +1905,10 @@ function renderDetail(recipe) {
     <div class="drawer-actions">
       <button class="ghost-button" id="edit-recipe-button">Edit recipe</button>
       <button class="danger-button" id="delete-recipe-button">Delete</button>
-      ${recipe.isPublic
-        ? `<button class="ghost-button" id="copy-link-button">Copy share link</button>
-           <button class="ghost-button" id="unshare-button">Stop sharing</button>`
-        : `<button class="ghost-button" id="share-button">Share recipe</button>`}
+      <button class="ghost-button" id="copy-link-button">Copy link</button>
+      <button class="ghost-button" id="hide-toggle-button">${recipe.isHidden ? "Make public" : "Hide from public"}</button>
     </div>
-    ${recipe.isPublic ? `<p class="share-hint" id="share-hint">Public · anyone with the link can view</p>` : ""}
+    <p class="share-hint">${recipe.isHidden ? "Hidden · only you can see this" : "Public · anyone with the link can view"}</p>
     ` : `<p class="share-hint">Viewing a shared recipe (read-only).</p>`}
     <div class="cook-tracker">
       ${editable ? `<button type="button" class="primary-button cook-button" id="made-this-button">✓ Made this</button>` : ""}
@@ -1912,9 +1951,8 @@ function renderDetail(recipe) {
   // Edit/delete/share controls only render for recipes the viewer owns.
   $("#edit-recipe-button")?.addEventListener("click", () => openEditModal(recipe));
   $("#delete-recipe-button")?.addEventListener("click", () => deleteRecipe(recipe));
-  $("#share-button")?.addEventListener("click", () => shareRecipe(recipe));
   $("#copy-link-button")?.addEventListener("click", () => copyShareLink(recipe));
-  $("#unshare-button")?.addEventListener("click", () => unshareRecipe(recipe));
+  $("#hide-toggle-button")?.addEventListener("click", () => setRecipeHidden(recipe, !recipe.isHidden));
   $("#estimate-nutrition-button")?.addEventListener("click", () => estimateNutrition(recipe));
 
   // Rating stars + form exist only when editable; skip wiring otherwise.
@@ -2573,6 +2611,48 @@ $("#auth-form").addEventListener("submit", async (event) => {
     showAuthError(error.message || "Authentication failed.");
   } finally {
     $("#auth-submit").disabled = false;
+  }
+});
+
+// Passwordless sign-in: email a 6-digit code, then verify it. Easier than
+// typing a long password (and works cross-device without a redirect).
+$("#auth-otp-button")?.addEventListener("click", async () => {
+  if (!cloud.client) { showAuthError("Supabase is not configured in this browser."); return; }
+  const email = $("#auth-form [name=email]").value.trim();
+  if (!email) { showAuthError("Enter your email first."); return; }
+  const button = $("#auth-otp-button");
+  button.disabled = true;
+  $("#auth-error").hidden = true;
+  try {
+    const { error } = await cloud.client.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
+    if (error) throw error;
+    $("#otp-fields").hidden = false;
+    button.textContent = "Resend code";
+    showToast("Sign-in code emailed. Enter it below.");
+    setTimeout(() => $("#otp-input")?.focus(), 0);
+  } catch (error) {
+    showAuthError(error.message || "Couldn't send a code.");
+  } finally {
+    button.disabled = false;
+  }
+});
+$("#otp-verify-button")?.addEventListener("click", async () => {
+  if (!cloud.client) return;
+  const email = $("#auth-form [name=email]").value.trim();
+  const token = $("#otp-input").value.trim();
+  if (!token) { showAuthError("Enter the 6-digit code."); return; }
+  const button = $("#otp-verify-button");
+  button.disabled = true;
+  $("#auth-error").hidden = true;
+  try {
+    const { error } = await cloud.client.auth.verifyOtp({ email, token, type: "email" });
+    if (error) throw error;
+    closeAuthModal();
+    showToast("Signed in.");
+  } catch (error) {
+    showAuthError(error.message || "Invalid or expired code.");
+  } finally {
+    button.disabled = false;
   }
 });
 

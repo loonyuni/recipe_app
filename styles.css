@@ -329,6 +329,10 @@ h2 span { color: var(--muted); font: 400 11px var(--mono); vertical-align: middl
 .section-editor-remove { flex: none; padding: 6px 11px; font-size: 11px; }
 .section-editor-add { justify-self: start; }
 
+.auth-otp { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); display: grid; gap: 10px; }
+.auth-otp-or { margin: 0; color: var(--muted); font: 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+#otp-fields { display: grid; gap: 10px; }
+
 .min-rating-select { border: 1px solid var(--line); background: var(--white); color: var(--ink); border-radius: 3px; font: 11px var(--mono); padding: 6px 8px; cursor: pointer; }
 
 /* Full-page recipe detail */
