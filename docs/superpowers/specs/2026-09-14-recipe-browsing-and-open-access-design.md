@@ -53,22 +53,38 @@ Non-goals: comments, multi-user social features, offline-first rework, redesigni
 
 - Keep rating-driven (avg ≥ 4.5). Add an empty-state: "Rate a recipe 4.5★ or higher to see it here." No manual favorite toggle for now (YAGNI; revisit if it feels off).
 
-### E. Whole library public, read-only (demo mode)
+### E. Open homepage: the whole library is public, read-only
 
-- Add `households.public_library boolean not null default false` and `recipes.is_hidden boolean not null default false` (per-recipe override).
+The app is built for one person (the owner). Viewing is fully open with no login: the public library **is** the homepage. This is not a "demo mode" and there is no prominent toggle. Editing still requires being the owner (see F); only viewing is open.
+
+- Add `households.public_library boolean not null default false` and `recipes.is_hidden boolean not null default false` (per-recipe override). Set `public_library = true` for the owner's household in the migration.
 - **Public visibility rule** (rewrite `public_recipes` view, joining `households`):
   `NOT r.is_hidden AND (h.public_library OR r.is_public)`.
-  So with `public_library` on, the whole library is public except recipes explicitly hidden; with it off, behavior is exactly today's per-recipe sharing.
-- **Slugs for everything.** With `public_library` on, every visible recipe needs a permalink. Add a `before insert or update of title` trigger on `recipes` that assigns a unique slug from the title when `slug is null` (reusing the same slugify + uniqueness loop as `publish_recipe`). This also backfills imports (e.g. the two recipes just added have no slug yet). One-time backfill for existing rows in the migration.
-- Owner controls on the detail view (decision: **hide-only**): show "Copy link" + "Hide from public" (toggles `is_hidden`). The per-recipe "Share / Stop sharing" buttons are removed from the UI since demo mode makes the whole library public. The `is_public` column and `publish_recipe` RPC stay in the DB (harmless, and available if demo mode is later turned off), just not surfaced in the UI.
-- **Settings toggle** (decision: **small inline panel**). Wire the existing sidebar "⚙ Settings" button to a lightweight popover with a "Public library (demo mode)" switch (owner only), backed by a `set_public_library(enabled boolean)` security-definer RPC scoped to the caller's household (there is no `households` update RLS policy today, so an RPC is cleaner than adding one).
-- Enable `public_library = true` for the owner's household in the migration (that is the whole point of the request), leaving `is_hidden` for exceptions.
-- **Privacy note:** this makes every non-hidden recipe readable by anyone with the link on a public site. Reversible by flipping the switch off. Called out explicitly; the owner opted in.
+  With the flag on, the whole library is public except recipes explicitly hidden; with it off, behavior is exactly today's per-recipe sharing.
+- **Slugs for everything.** With the flag on, every visible recipe needs a permalink. Add a `before insert or update of title` trigger on `recipes` that assigns a unique slug from the title when `slug is null` (reusing the slugify + uniqueness loop from `publish_recipe`). This also backfills imports (the three recipes just added have no slug yet). One-time backfill for existing rows in the migration.
+- Owner controls on the detail view (**hide-only**): "Copy link" + "Hide from public" (toggles `is_hidden` via a normal authenticated UPDATE under existing recipes RLS). Per-recipe "Share / Stop sharing" buttons are removed from the UI since the library is public by default. The `is_public` column and `publish_recipe` RPC stay in the DB (harmless, available if the flag is later turned off), just not surfaced.
+- **No settings toggle for now** (YAGNI). The flag defaults on for this household; flipping it is a `set_public_library(enabled boolean)` security-definer RPC (kept in the DB for the future) or a one-line SQL change. The inline settings popover from earlier is dropped for this feature.
+- **Note:** this makes every non-hidden recipe readable by anyone with the link on a public site. The owner opted in; per-recipe hide and the flag give escape hatches.
 
-### F. Magic-link / OTP login (owner convenience)
+### E2. Two-way door (keeping login as a future option)
 
-- Add an "Email me a code" path in the auth modal using Supabase `signInWithOtp({ email })` then `verifyOtp({ email, token, type: 'email' })` (6-digit code, no cross-device redirect needed, easier than a link on someone else's phone). Keep password login as-is.
-- Requires nothing new server-side beyond the default email auth already in use (password login works, so email auth is enabled). Site URL is already registered in Supabase Auth.
+The point of going open now is to remove the owner's daily friction, without burning the ability to add login/gatekeeping later. Guarantees:
+
+- **Ownership metadata stays.** Every recipe keeps `household_id` + `created_by`; households/members/auth tables and RLS remain. Nothing is deleted.
+- **"Open" is one read-visibility flag,** not a schema change. Reading is public when `public_library` is on; flip it off and reading requires household membership again, with zero data migration.
+- **Writes stay authenticated always.** Opening read access never opens write access; the `anon` role never gets write grants. The security model is untouched by going open.
+- **Login UI stays in the code,** just not required to view.
+
+Reverting to gated = flip `public_library` off (one RPC/SQL call). Adding real multi-user later = the household/membership model is already there. No rebuild either direction.
+
+### F. Editing = stay logged in (owner only)
+
+Decision: **stay-logged-in editing.** Viewing needs no login; editing requires the owner's session, made sticky enough to be invisible day to day.
+
+- **Long-lived session.** `persistSession` + `autoRefreshToken` are already on. The "log in every time" annoyance points at a short token expiry in the Supabase Auth config. Raise the JWT / refresh-token lifetime (and confirm refresh-token rotation keeps the device authed indefinitely) so one login per device lasts months. This is a Supabase Auth setting, not SQL; check the current value and extend it as part of the work.
+- **Painless re-auth** when a session does drop: add an "Email me a code" path to the auth modal using `signInWithOtp({ email })` then `verifyOtp({ email, token, type: 'email' })` (6-digit code, no cross-device redirect, no password typing). Keep password login as-is.
+- No new server-side infra beyond the existing email auth (password login already works, so email auth is enabled; site URL is registered).
+- The owner no longer needs to log in on other people's devices at all: friends just view the open homepage read-only.
 
 ## Data model / migration (`supabase-open-browsing.sql`)
 
@@ -84,9 +100,9 @@ Applied via the Supabase Management API SQL path (documented in memory). All add
 
 ## Frontend changes (`app.js`, `index.html`, `styles.css`)
 
-- `index.html`: `#list-view` / `#detail-view` containers; sidebar "Recently viewed" block; settings panel markup; auth-modal OTP fields. Bump the `?v=` cache-bust on JS/CSS.
-- `app.js`: `state.mode`; `render()` branch; `recipeDetailHtml` / `wireRecipeDetail`; `showRecipe` / `showList`; recent-views store; related-recipe computation; "Made this" wiring + cook-count load; `filteredRecipes()` updates (favorites empty-state, recent by lastCookedAt); public_library-aware owner controls; settings toggle + `set_public_library`; OTP auth path. Retire `openDrawer`/`closeDrawer`/`#recipe-drawer`.
-- `styles.css`: detail-view layout, breadcrumb, related strip, recently-viewed list, settings panel, "Made this" button + count badge.
+- `index.html`: `#list-view` / `#detail-view` containers; sidebar "Recently viewed" block; auth-modal OTP fields. Bump the `?v=` cache-bust on JS/CSS.
+- `app.js`: `state.mode`; `render()` branch; `recipeDetailHtml` / `wireRecipeDetail`; `showRecipe` / `showList`; recent-views store; related-recipe computation; "Made this" wiring + cook-count load; `filteredRecipes()` updates (favorites empty-state, recent by lastCookedAt); hide-only owner controls (Copy link + Hide from public); OTP auth path. Retire `openDrawer`/`closeDrawer`/`#recipe-drawer`. No settings-panel UI (the public-read flag has no toggle for now).
+- `styles.css`: detail-view layout, breadcrumb, related strip, recently-viewed list, "Made this" button + count badge.
 
 ## Testing
 
@@ -96,7 +112,7 @@ Applied via the Supabase Management API SQL path (documented in memory). All add
 
 ## Risks / decisions
 
-- **Exposure:** demo mode publishes everything non-hidden. Mitigations: per-recipe hide, one-switch off, clear labeling. Accepted by owner.
+- **Exposure:** the open homepage publishes everything non-hidden. Mitigations: per-recipe hide, the flag can be flipped off, writes stay authenticated. Accepted by owner.
 - **Slug collisions across the whole library:** handled by the existing uniqueness loop, now in a trigger so imports and bulk backfill are covered.
 - **Drawer removal:** a focused rewrite of the view layer; the detail markup is reused, so content/logic risk is low, but every card/keyboard/permalink entry point must route through `showRecipe`. Covered by tests.
 - **Cook count on public view:** intentional (fun social proof); only the aggregate is exposed, never who/when.
@@ -104,5 +120,6 @@ Applied via the Supabase Management API SQL path (documented in memory). All add
 ## Resolved decisions
 
 1. Cook count: show a `Made N×` badge on cards **and** the count on the detail page.
-2. Settings: **small inline popover** off the sidebar ⚙ button.
-3. Sharing UI: **hide-only** in demo mode (Copy link + Hide from public); per-recipe Share buttons removed from the UI (DB path retained).
+2. Access: the whole library is the **open homepage** (public read, no login). Not "demo mode", no prominent toggle; flag defaults on, flip via RPC/SQL later. Settings popover dropped.
+3. Sharing UI: **hide-only** (Copy link + Hide from public); per-recipe Share buttons removed from the UI (DB path retained).
+4. Editing: **stay-logged-in** (owner only). Extend Supabase token life so one login per device lasts months; add OTP re-auth. Two-way door preserved (see E2).
