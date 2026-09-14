@@ -329,6 +329,29 @@ h2 span { color: var(--muted); font: 400 11px var(--mono); vertical-align: middl
 .section-editor-remove { flex: none; padding: 6px 11px; font-size: 11px; }
 .section-editor-add { justify-self: start; }
 
+.min-rating-select { border: 1px solid var(--line); background: var(--white); color: var(--ink); border-radius: 3px; font: 11px var(--mono); padding: 6px 8px; cursor: pointer; }
+
+/* Full-page recipe detail */
+#detail-view { padding-top: 28px; }
+.recipe-detail { max-width: 760px; }
+.breadcrumb { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; font: 12px var(--mono); color: var(--muted); }
+.breadcrumb-link { background: none; border: 0; padding: 0; color: var(--red); cursor: pointer; font: inherit; }
+.breadcrumb-link:hover { text-decoration: underline; }
+.breadcrumb-sep { color: var(--line); }
+.breadcrumb-current { color: var(--ink); }
+.cook-tracker { display: flex; align-items: center; gap: 12px; margin: 16px 0; flex-wrap: wrap; }
+.cook-button { padding: 8px 14px; }
+.cook-count { color: var(--muted); font: 500 12px var(--mono); }
+.related-strip { max-width: 760px; margin-top: 30px; border-top: 1px solid var(--line); padding-top: 22px; }
+.related-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-top: 12px; }
+.related-card { display: flex; flex-direction: column; gap: 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--white); cursor: pointer; text-align: left; }
+.related-card:hover { border-color: var(--red); }
+.related-card img { width: 100%; height: 92px; object-fit: cover; }
+.related-card__ph { display: flex; align-items: center; justify-content: center; height: 92px; background: var(--sage); color: rgba(255,255,255,.86); font: 500 14px var(--display); padding: 6px; text-align: center; }
+.related-card__title { padding: 8px 10px 10px; font: 600 12px var(--body); color: var(--ink); line-height: 1.35; }
+.recent-item { width: 100%; text-align: left; border: 0; background: none; cursor: pointer; font: inherit; }
+.card-cook-badge { flex: none; padding: 4px 6px; background: var(--sage); color: var(--white); border-radius: 2px; font: 9px var(--mono); }
+
 /* Public sharing */
 .readonly-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 8px; padding: 10px 14px; background: var(--paper-deep); border: 1px solid var(--line); border-radius: 6px; color: var(--muted); font-size: 12px; }
 .readonly-banner .ghost-button { flex: none; }

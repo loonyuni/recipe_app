@@ -140,6 +140,8 @@ const state = {
   search: "",
   sort: "recent",
   view: "library",
+  mode: "list", // "list" (grid) or "detail" (single recipe takes over the main column)
+  minRating: 0, // minimum-rating filter (0 = off)
   activeRecipe: null,
   editingRecipeId: null,
   activeImportDraft: null
@@ -750,6 +752,26 @@ async function loadCloudRecipesInner() {
     }));
   if (state.recipes.length) {
     const recipeIds = state.recipes.map((recipe) => recipe.id);
+    // Cook counts + last-cooked, aggregated client-side from cook_log rows.
+    const { data: cooks, error: cookError } = await cloud.client
+      .from("cook_log")
+      .select("recipe_id, cooked_at")
+      .in("recipe_id", recipeIds);
+    if (cookError) {
+      console.warn("Cook log load skipped:", cookError.message);
+    } else {
+      const countByRecipe = new Map();
+      const lastByRecipe = new Map();
+      (cooks || []).forEach((row) => {
+        countByRecipe.set(row.recipe_id, (countByRecipe.get(row.recipe_id) || 0) + 1);
+        const prev = lastByRecipe.get(row.recipe_id);
+        if (!prev || new Date(row.cooked_at) > new Date(prev)) lastByRecipe.set(row.recipe_id, row.cooked_at);
+      });
+      state.recipes.forEach((recipe) => {
+        recipe.cookCount = countByRecipe.get(recipe.id) || 0;
+        recipe.lastCookedAt = lastByRecipe.get(recipe.id) || null;
+      });
+    }
     const { data: ratings } = await cloud.client
       .from("ratings")
       .select("recipe_id, member_id, score, would_make_again, comment, cooked_at, household_members(display_name)")
@@ -812,6 +834,8 @@ function mapPublicRow(row) {
   recipe.foreign = true;
   recipe.isPublic = true;
   recipe.tags = Array.isArray(row.tags) ? row.tags : [];
+  recipe.cookCount = Number(row.cook_count) || 0;
+  recipe.lastCookedAt = row.last_cooked_at || null;
   return recipe;
 }
 
@@ -868,7 +892,7 @@ async function openInitialSharedRecipe() {
       render();
     }
   }
-  if (recipe) openDrawer(recipe.id, { updateUrl: false });
+  if (recipe) showRecipe(recipe.id, { updateUrl: false });
   else showToast("That shared recipe isn't available.");
 }
 
@@ -1069,7 +1093,7 @@ async function persistNewRecipe(recipe) {
       showToast("Existing recipe updated locally; cloud update failed.");
     }
     render();
-    openDrawer(duplicate.id);
+    showRecipe(duplicate.id);
     return;
   }
   // Mark as local-only until a cloud insert confirms; loadCloudRecipes re-uploads
@@ -1089,7 +1113,7 @@ async function persistNewRecipe(recipe) {
     }
   }
   render();
-  openDrawer(recipe.id);
+  showRecipe(recipe.id);
 }
 
 async function initSupabase() {
@@ -1301,10 +1325,9 @@ function filteredRecipes() {
   const tagFiltering = state.selectedTags.length > 0;
   if (state.view === "pastry") {
     recipes = recipes.filter(isPastrySchool);
-  } else if (state.view === "favorites") {
-    recipes = recipes.filter((recipe) => averageRating(recipe) >= 4.5);
   } else if (state.view === "recent") {
-    recipes = recipes.filter((recipe) => recipe.cooked > 0).sort((a, b) => b.cooked - a.cooked);
+    // Recently cooked: only recipes with a logged cook (see cookCount).
+    recipes = recipes.filter((recipe) => (recipe.cookCount || 0) > 0);
   } else if (!searching && !tagFiltering) {
     // Default library view: keep the pastry-school archive out so it doesn't
     // bury personal recipes. Searching or filtering by a tag still surfaces
@@ -1312,6 +1335,7 @@ function filteredRecipes() {
     recipes = recipes.filter((recipe) => !isPastrySchool(recipe));
   }
   if (state.selectedTags.length) recipes = recipes.filter((recipe) => state.selectedTags.every((tag) => recipe.tags.includes(tag)));
+  if (state.minRating > 0) recipes = recipes.filter((recipe) => averageRating(recipe) >= state.minRating);
   if (state.search.trim()) {
     const terms = semanticTerms(state.search);
     recipes = recipes.map((recipe) => {
@@ -1321,9 +1345,13 @@ function filteredRecipes() {
     }).filter((result) => result.score > 0).sort((a, b) => b.score - a.score).map((result) => result.recipe);
   }
   if (state.sort === "rating") recipes.sort((a, b) => averageRating(b) - averageRating(a));
+  if (state.sort === "mostcooked") recipes.sort((a, b) => (b.cookCount || 0) - (a.cookCount || 0));
   if (state.sort === "title") recipes.sort((a, b) => a.title.localeCompare(b.title));
   if (state.sort === "time") recipes.sort((a, b) => timeMinutes(a.time) - timeMinutes(b.time));
   if (state.sort === "recent") recipes.sort((a, b) => b.added - a.added);
+  // The Recently cooked tab is intrinsically ordered by last cooked, regardless
+  // of the sort dropdown.
+  if (state.view === "recent") recipes.sort((a, b) => new Date(b.lastCookedAt || 0) - new Date(a.lastCookedAt || 0));
   return recipes;
 }
 
@@ -1341,7 +1369,7 @@ function renderRecipes() {
       <div class="recipe-card__body">
         <h3>${esc(recipe.title)}</h3>
         <p>${esc(recipe.description)}</p>
-        <div class="card-meta"><span>◷ ${esc(formatTimeLabel(recipe.time))}</span><span>♧ ${esc(recipe.servings)} servings</span></div>
+        <div class="card-meta"><span>◷ ${esc(formatTimeLabel(recipe.time))}</span><span>♧ ${esc(recipe.servings)} servings</span>${recipe.cookCount ? `<span class="card-cook-badge">Made ${esc(recipe.cookCount)}×</span>` : ""}</div>
         <div class="card-footer">
           <div class="card-tags">${recipe.tags.slice(0, 2).map((tag) => `<span class="card-tag">${esc(tag)}</span>`).join("")}</div>
           <span class="card-rating">★ ${averageRating(recipe).toFixed(1)}</span>
@@ -1350,8 +1378,8 @@ function renderRecipes() {
     </article>`).join("");
   $("#empty-state").hidden = recipes.length !== 0;
   $$(".recipe-card").forEach((card) => {
-    card.addEventListener("click", () => openDrawer(card.dataset.id));
-    card.addEventListener("keydown", (event) => { if (event.key === "Enter") openDrawer(card.dataset.id); });
+    card.addEventListener("click", () => showRecipe(card.dataset.id));
+    card.addEventListener("keydown", (event) => { if (event.key === "Enter") showRecipe(card.dataset.id); });
   });
 }
 
@@ -1378,10 +1406,18 @@ function updateReadOnlyChrome() {
 function render() {
   renderLabels();
   renderFilters();
-  renderRecipes();
   updateReadOnlyChrome();
-  const titles = { library: "All recipes", favorites: "Family favorites", recent: "Recently cooked", pastry: "Pastry school" };
-  $("#view-title").firstChild.textContent = titles[state.view] + " ";
+  renderRecentlyViewed();
+  const detail = state.mode === "detail" && state.activeRecipe;
+  $("#list-view").hidden = detail;
+  $("#detail-view").hidden = !detail;
+  if (detail) {
+    renderDetail(state.activeRecipe);
+    return;
+  }
+  renderRecipes();
+  const titles = { library: "All recipes", recent: "Recently cooked", pastry: "Pastry school" };
+  $("#view-title").firstChild.textContent = (titles[state.view] || "All recipes") + " ";
   $$(".nav-item").forEach((item) => item.classList.toggle("is-active", item.dataset.view === state.view));
 }
 
@@ -1601,9 +1637,8 @@ async function shareRecipe(recipe) {
     recipe.slug = data;
     recipe.isPublic = true;
     const copied = await copyToClipboard(shareLinkFor(recipe));
-    showToast(copied ? "Share link copied to clipboard." : "Recipe shared. Copy the link from the drawer.");
+    showToast(copied ? "Share link copied to clipboard." : "Recipe shared. Copy the link from the page.");
     render();
-    openDrawer(recipe.id, { updateUrl: false });
   } catch (error) {
     console.error(error);
     showToast(`Couldn't share: ${error.message || "unknown error"}`);
@@ -1621,7 +1656,6 @@ async function unshareRecipe(recipe) {
     recipe.isPublic = false;
     showToast("Recipe is private again. Its link now stops working.");
     render();
-    openDrawer(recipe.id, { updateUrl: false });
   } catch (error) {
     console.error(error);
     showToast(`Couldn't stop sharing: ${error.message || "unknown error"}`);
@@ -1633,11 +1667,97 @@ async function copyShareLink(recipe) {
   showToast(copied ? "Share link copied to clipboard." : shareLinkFor(recipe));
 }
 
-function openDrawer(id, { updateUrl = true } = {}) {
+// --- Recently viewed + cook tracking ---------------------------------------
+const RECENT_VIEWS_KEY = "kitchen-archive-recent-views";
+function recentViews() {
+  try { return JSON.parse(localStorage.getItem(RECENT_VIEWS_KEY) || "[]"); } catch { return []; }
+}
+function recordRecentView(recipe) {
+  const entry = { id: recipe.id, slug: recipe.slug || null, title: recipe.title, ts: Date.now() };
+  const list = [entry, ...recentViews().filter((item) => item.id !== recipe.id)].slice(0, 5);
+  localStorage.setItem(RECENT_VIEWS_KEY, JSON.stringify(list));
+}
+function renderRecentlyViewed() {
+  const section = $("#recently-viewed-section");
+  const listEl = $("#recently-viewed-list");
+  if (!section || !listEl) return;
+  const items = recentViews().filter((entry) => state.recipes.some((recipe) => recipe.id === entry.id));
+  section.hidden = items.length === 0;
+  listEl.innerHTML = items.map((entry) => `<button class="label-item recent-item" data-recent-id="${escAttr(entry.id)}">${esc(entry.title)}</button>`).join("");
+  $$("[data-recent-id]", listEl).forEach((button) => button.addEventListener("click", () => showRecipe(button.dataset.recentId)));
+}
+
+function relativeDate(iso) {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return "";
+  const days = Math.floor((Date.now() - then) / 86400000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  if (days < 30) return `${Math.floor(days / 7)} wk ago`;
+  if (days < 365) return `${Math.floor(days / 30)} mo ago`;
+  return `${Math.floor(days / 365)} yr ago`;
+}
+function cookCountLabel(recipe) {
+  const count = recipe.cookCount || 0;
+  if (!count) return "Not cooked yet";
+  const last = recipe.lastCookedAt ? ` · last ${relativeDate(recipe.lastCookedAt)}` : "";
+  return `Made ${count}×${last}`;
+}
+
+// Log one cook via the log_cook RPC (owner only), bump the local count, re-render.
+async function logCook(recipe) {
+  if (!cloud.connected || !cloud.client) { showToast("Sign in to log a cook."); return; }
+  try {
+    const { data, error } = await cloud.client.rpc("log_cook", { target_recipe: recipe.id });
+    if (error) throw error;
+    recipe.cookCount = Number(data) || (recipe.cookCount || 0) + 1;
+    recipe.lastCookedAt = new Date().toISOString();
+    showToast(`Logged. Made ${recipe.cookCount}×.`);
+    render();
+  } catch (error) {
+    console.error(error);
+    showToast(`Couldn't log cook: ${error.message || "unknown error"}`);
+  }
+}
+
+// Opening a recipe takes over the main column (no overlay); the sidebar stays.
+// showRecipe sets the route and records a recent view; renderDetail builds the
+// markup and wires it; render() decides list vs detail.
+function showRecipe(id, { updateUrl = true } = {}) {
   const recipe = state.recipes.find((item) => item.id === id);
   if (!recipe) return;
   state.activeRecipe = recipe;
+  state.mode = "detail";
   drawerScale = 1;
+  recordRecentView(recipe);
+  if (updateUrl && recipe.slug) syncDrawerUrl(recipe.slug);
+  render();
+  window.scrollTo({ top: 0 });
+}
+
+function showList() {
+  state.mode = "list";
+  state.activeRecipe = null;
+  clearDrawerUrl();
+  render();
+}
+
+// Other recipes sharing at least one tag, most-overlapping first.
+function relatedRecipes(recipe, limit = 6) {
+  const tags = new Set((recipe.tags || []).map((tag) => String(tag).toLowerCase()));
+  if (!tags.size) return [];
+  return state.recipes
+    .filter((other) => other.id !== recipe.id)
+    .map((other) => ({ recipe: other, shared: (other.tags || []).filter((tag) => tags.has(String(tag).toLowerCase())).length }))
+    .filter((entry) => entry.shared > 0)
+    .sort((a, b) => b.shared - a.shared)
+    .slice(0, limit)
+    .map((entry) => entry.recipe);
+}
+
+function renderDetail(recipe) {
   const editable = canEditRecipe(recipe);
   const ratings = recipe.ratings || [];
   const reviewers = [...new Set([
@@ -1721,7 +1841,22 @@ function openDrawer(id, { updateUrl = true } = {}) {
     ${recipe.variants.map((variant) => `<div class="variant-card"><strong>${esc(variant.name)}</strong><p>${esc(variant.note)}</p></div>`).join("")}
     ${variantAddHtml}`;
 
-  $("#drawer-content").innerHTML = `
+  const relatedList = relatedRecipes(recipe);
+  const relatedHtml = relatedList.length ? `
+    <section class="related-strip">
+      <h3 class="drawer-section-title">More like this</h3>
+      <div class="related-grid">
+        ${relatedList.map((other) => `
+          <button type="button" class="related-card" data-related-id="${escAttr(other.id)}">
+            ${recipeImageUrls(other).length ? `<img src="${escAttr(recipeImageUrls(other).at(-1))}" alt="${escAttr(other.title)}" />` : `<span class="related-card__ph">${esc(other.title.split(" ").slice(0, 2).join(" "))}</span>`}
+            <span class="related-card__title">${esc(other.title)}</span>
+          </button>`).join("")}
+      </div>
+    </section>` : "";
+
+  $("#detail-view").innerHTML = `
+    <nav class="breadcrumb"><button type="button" class="breadcrumb-link" id="breadcrumb-home">All recipes</button> <span class="breadcrumb-sep">›</span> <span class="breadcrumb-current">${esc(recipe.title)}</span></nav>
+    <article class="recipe-detail">
     <p class="eyebrow">Recipe archive · ${esc(recipe.source || "Personal recipe")}</p>
     <h2 class="drawer-title" id="drawer-title">${esc(recipe.title)}</h2>
     <p class="drawer-description">${esc(recipe.description)}</p>
@@ -1736,6 +1871,10 @@ function openDrawer(id, { updateUrl = true } = {}) {
     </div>
     ${recipe.isPublic ? `<p class="share-hint" id="share-hint">Public · anyone with the link can view</p>` : ""}
     ` : `<p class="share-hint">Viewing a shared recipe (read-only).</p>`}
+    <div class="cook-tracker">
+      ${editable ? `<button type="button" class="primary-button cook-button" id="made-this-button">✓ Made this</button>` : ""}
+      <span class="cook-count" id="cook-count-label">${cookCountLabel(recipe)}</span>
+    </div>
     ${recipeImageUrls(recipe).length ? `
       <div class="drawer-image-gallery">
         ${recipeImageUrls(recipe).map((imageUrl, index) => `<img src="${escAttr(imageUrl)}" alt="${escAttr(recipe.title)} photo ${index + 1}" />`).join("")}
@@ -1759,9 +1898,12 @@ function openDrawer(id, { updateUrl = true } = {}) {
     <button type="button" class="ghost-button" id="estimate-nutrition-button">Estimate nutrition</button>
     `}
     ${ingredientsMethodHtml}
-    ${householdExtrasHtml}`;
-  $("#recipe-drawer").hidden = false;
-  if (updateUrl && recipe.slug) syncDrawerUrl(recipe.slug);
+    ${householdExtrasHtml}
+    </article>
+    ${relatedHtml}`;
+  $("#breadcrumb-home").addEventListener("click", showList);
+  $$("#detail-view [data-related-id]").forEach((el) => el.addEventListener("click", () => showRecipe(el.dataset.relatedId)));
+  $("#made-this-button")?.addEventListener("click", () => logCook(recipe));
   $$("#scale-controls .scale-button").forEach((button) => {
     button.addEventListener("click", () => { drawerScale = Number(button.dataset.scale); applyDrawerScaling(); });
   });
@@ -1827,16 +1969,9 @@ function openDrawer(id, { updateUrl = true } = {}) {
         showToast(`Rating saved locally: ${error.message || "cloud save failed"}`);
       }
       render();
-      openDrawer(recipe.id, { updateUrl: false });
     });
   }
   $("#add-variant-button")?.addEventListener("click", () => showToast("Variant editing is next on the build list."));
-}
-
-function closeDrawer() {
-  $("#recipe-drawer").hidden = true;
-  state.activeRecipe = null;
-  clearDrawerUrl();
 }
 
 // Reflect the open recipe in the URL as ?recipe=<slug> (public recipes only).
@@ -1860,19 +1995,17 @@ function clearDrawerUrl() {
 window.addEventListener("popstate", async () => {
   const slug = new URLSearchParams(window.location.search).get("recipe");
   if (!slug) {
-    $("#recipe-drawer").hidden = true;
+    state.mode = "list";
     state.activeRecipe = null;
+    render();
     return;
   }
   let recipe = state.recipes.find((item) => item.slug === slug);
   if (!recipe) {
     recipe = await fetchPublicRecipeBySlug(slug);
-    if (recipe) {
-      state.recipes = [recipe, ...state.recipes.filter((item) => item.id !== recipe.id)];
-      render();
-    }
+    if (recipe) state.recipes = [recipe, ...state.recipes.filter((item) => item.id !== recipe.id)];
   }
-  if (recipe) openDrawer(recipe.id, { updateUrl: false });
+  if (recipe) showRecipe(recipe.id, { updateUrl: false });
 });
 
 // --- Section editor (manual form + import review) ---------------------------
@@ -1961,7 +2094,6 @@ function openEditModal(recipe) {
   form.description.value = recipe.description || "";
   setupSectionEditor($("#recipe-section-editor"), getSections(recipe));
   $("#recipe-modal").hidden = false;
-  closeDrawer();
   setTimeout(() => form.title.focus(), 0);
 }
 
@@ -1979,8 +2111,7 @@ async function deleteRecipe(recipe) {
     await deleteRecipeFromCloud(recipe);
     state.recipes = state.recipes.filter((item) => item.id !== recipe.id);
     saveRecipes();
-    closeDrawer();
-    render();
+    showList();
     showToast("Recipe deleted.");
   } catch (error) {
     console.error(error);
@@ -2112,7 +2243,6 @@ async function estimateNutrition(recipe) {
       console.warn("Nutrition estimate saved locally only:", cloudError.message);
     }
     render();
-    openDrawer(recipe.id);
     showToast("Nutrition estimated.");
   } catch (error) {
     console.error(error);
@@ -2228,6 +2358,7 @@ function openFilterPopover() {
 
 $("#search-input").addEventListener("input", (event) => { state.search = event.target.value; renderRecipes(); });
 $("#sort-select").addEventListener("change", (event) => { state.sort = event.target.value; renderRecipes(); });
+$("#min-rating-select")?.addEventListener("change", (event) => { state.minRating = Number(event.target.value) || 0; renderRecipes(); });
 $("#filter-button").addEventListener("click", openFilterPopover);
 $("#new-recipe-button").addEventListener("click", openImportModal);
 $("#empty-new-button").addEventListener("click", openImportModal);
@@ -2258,7 +2389,7 @@ $("#add-label-button").addEventListener("click", async () => {
   render();
   // Re-open the drawer so the newly added tag shows immediately (render()
   // refreshes the grid/sidebar but not the already-open drawer contents).
-  if (state.activeRecipe?.id === recipe.id) openDrawer(recipe.id);
+  if (state.activeRecipe?.id === recipe.id) render();
   try {
     await updateRecipeToCloud(recipe);
     showToast(`Added “${tag}” to ${recipe.title}.`);
@@ -2274,7 +2405,6 @@ $("#manage-labels-button").addEventListener("click", openLabelManager);
 $("#label-manager-close").addEventListener("click", closeLabelManager);
 $("#label-manager-done").addEventListener("click", closeLabelManager);
 $("#label-manager-modal").addEventListener("click", (event) => { if (event.target.id === "label-manager-modal") closeLabelManager(); });
-$("#drawer-close").addEventListener("click", closeDrawer);
 $("#modal-close").addEventListener("click", closeModal);
 $("#cancel-form").addEventListener("click", closeModal);
 $("#import-close").addEventListener("click", closeImportModal);
@@ -2298,7 +2428,6 @@ $$(".import-tab").forEach((tab) => tab.addEventListener("click", () => {
     panel.classList.toggle("is-active", !panel.hidden);
   });
 }));
-$("#recipe-drawer").addEventListener("click", (event) => { if (event.target.id === "recipe-drawer") closeDrawer(); });
 $("#recipe-modal").addEventListener("click", (event) => { if (event.target.id === "recipe-modal") closeModal(); });
 $("#import-modal").addEventListener("click", (event) => { if (event.target.id === "import-modal") closeImportModal(); });
 $("#auth-close").addEventListener("click", closeAuthModal);
@@ -2309,7 +2438,7 @@ document.addEventListener("click", (event) => {
 });
 document.addEventListener("keydown", (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); $("#search-input").focus(); }
-  if (event.key === "Escape") { closeDrawer(); closeModal(); closeImportModal(); closeAuthModal(); closeLabelManager(); $("#filter-popover").hidden = true; }
+  if (event.key === "Escape") { closeModal(); closeImportModal(); closeAuthModal(); closeLabelManager(); $("#filter-popover").hidden = true; }
 });
 $$(".nav-item").forEach((item) => item.addEventListener("click", () => { state.view = item.dataset.view; render(); }));
 $("#recipe-form").addEventListener("submit", (event) => {
@@ -2335,8 +2464,7 @@ $("#recipe-form").addEventListener("submit", (event) => {
     // cloud write fails (otherwise it lived only in memory and reverted on
     // reload). Then attempt the cloud sync and report only its outcome.
     saveRecipes();
-    render();
-    openDrawer(recipe.id);
+    showRecipe(recipe.id, { updateUrl: false });
     updateRecipeToCloud(recipe)
       .then(() => showToast("Recipe updated."))
       .catch((error) => showToast(`Updated locally; cloud sync failed: ${error.message || "try again"}`));
