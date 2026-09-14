@@ -49,9 +49,15 @@ Non-goals: comments, multi-user social features, offline-first rework, redesigni
 - Household load computes per-recipe `cookCount` / `lastCookedAt` (one aggregated query). Anon reads them from the view.
 - **"Recently cooked" tab** = recipes with `cookCount > 0`, sorted by `lastCookedAt desc`. Update `filteredRecipes()` to use these instead of the dead `cooked` field. Seed recipes keep working (map their static `cooked` into `cookCount` for the offline/no-cloud case).
 
-### D. Family favorites
+### D. Drop the "Family favorites" tab; treat rating and cook-frequency as separate signals
 
-- Keep rating-driven (avg ≥ 4.5). Add an empty-state: "Rate a recipe 4.5★ or higher to see it here." No manual favorite toggle for now (YAGNI; revisit if it feels off).
+Audit finding (2026-09-14): all ~85 cloud recipes have zero ratings. The rating-driven "Family favorites" tab is empty for real data; any 4.5+ entries seen were seed recipes or browser-local ratings never saved to the cloud. So the tab shows demo data, not reality.
+
+- **Remove the "Family favorites" nav item** (and its `favorites` branch in `filteredRecipes`). Delete the tab from `index.html` and the `titles` map.
+- **Keep per-recipe ratings.** The star rating input on the detail view stays. Rating = "how good it is."
+- **Cook frequency is a distinct signal.** "How often I make it" (cook count) is not the same as rating: a top-rated recipe can be high-effort and rarely made. Surface both independently rather than collapsing them into one "favorites" bucket.
+- **Sorting** (dropdown): add **"Most cooked"** (cook count desc) alongside the existing "Highest rated", recent, title, time. Separate options.
+- **Filter by rating:** add a minimum-rating filter (e.g. only 4+ or 4.5+ stars) in the filter row, next to tag filters. This replaces the dead Favorites tab: filter/sort by rating for your best-rated; sort by Most cooked for your go-tos.
 
 ### E. Open homepage: the whole library is public, read-only
 
@@ -101,7 +107,7 @@ Applied via the Supabase Management API SQL path (documented in memory). All add
 ## Frontend changes (`app.js`, `index.html`, `styles.css`)
 
 - `index.html`: `#list-view` / `#detail-view` containers; sidebar "Recently viewed" block; auth-modal OTP fields. Bump the `?v=` cache-bust on JS/CSS.
-- `app.js`: `state.mode`; `render()` branch; `recipeDetailHtml` / `wireRecipeDetail`; `showRecipe` / `showList`; recent-views store; related-recipe computation; "Made this" wiring + cook-count load; `filteredRecipes()` updates (favorites empty-state, recent by lastCookedAt); hide-only owner controls (Copy link + Hide from public); OTP auth path. Retire `openDrawer`/`closeDrawer`/`#recipe-drawer`. No settings-panel UI (the public-read flag has no toggle for now).
+- `app.js`: `state.mode`; `render()` branch; `recipeDetailHtml` / `wireRecipeDetail`; `showRecipe` / `showList`; recent-views store; related-recipe computation; "Made this" wiring + cook-count load; `filteredRecipes()` updates (remove the `favorites` view, `recent` sorts by lastCookedAt, add a "Most cooked" sort and a minimum-rating filter); hide-only owner controls (Copy link + Hide from public); OTP auth path. Remove the "Family favorites" nav item from `index.html` + `titles`. Retire `openDrawer`/`closeDrawer`/`#recipe-drawer`. No settings-panel UI (the public-read flag has no toggle for now).
 - `styles.css`: detail-view layout, breadcrumb, related strip, recently-viewed list, "Made this" button + count badge.
 
 ## Testing
@@ -123,3 +129,4 @@ Applied via the Supabase Management API SQL path (documented in memory). All add
 2. Access: the whole library is the **open homepage** (public read, no login). Not "demo mode", no prominent toggle; flag defaults on, flip via RPC/SQL later. Settings popover dropped.
 3. Sharing UI: **hide-only** (Copy link + Hide from public); per-recipe Share buttons removed from the UI (DB path retained).
 4. Editing: **stay-logged-in** (owner only). Extend Supabase token life so one login per device lasts months; add OTP re-auth. Two-way door preserved (see E2).
+5. Favorites: **drop the Family favorites tab** (audit showed zero ratings in the DB). Keep per-recipe ratings; rating and cook-frequency are separate signals. Add a "Most cooked" sort and a minimum-rating filter instead of a dedicated tab.
