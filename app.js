@@ -185,6 +185,9 @@ const hiddenReviewers = new Set(personalConfig.hiddenReviewers);
 const queryParams = new URLSearchParams(window.location.search);
 const devMode = queryParams.has("dev");
 const mockMode = queryParams.has("mock");
+// Permalink target parsed from ?recipe=<slug>. Opened on load (deep link) and
+// kept in sync as the drawer opens/closes so a shared recipe has a stable URL.
+const initialRecipeSlug = queryParams.get("recipe");
 const personalImageGallery = personalConfig.imagesBySourceUrl;
 const personalImageGalleryByTitle = personalConfig.imagesByTitle;
 
@@ -641,7 +644,11 @@ function recipeFromRow(row) {
     description: row.description || "",
     time: formatTime(row.time_minutes || 0),
     servings: row.servings || 4,
-    tags: [],
+    // Household rows come from select("*") without a `tags` key (filled later by
+    // the recipe_tags join); public_recipes view rows arrive with tags inline.
+    tags: Array.isArray(row.tags) ? row.tags : [],
+    slug: row.slug || null,
+    isPublic: Boolean(row.is_public),
     imageClass: "new",
     sourceUrl: row.source_url || "",
     imageUrl: row.image_url || personalImages[0] || "",
@@ -780,6 +787,89 @@ async function loadCloudRecipesInner() {
     }
   }
   render();
+  await openInitialSharedRecipe();
+}
+
+// --- Public sharing / permalinks --------------------------------------------
+// A signed-out visitor (or a signed-in user opening someone else's shared link)
+// reads the `public_recipes` view: only recipes an owner has opted into, with a
+// safe column subset. Rows are marked `foreign` so the UI renders them
+// read-only (no edit/delete/share/rating controls).
+
+// True whenever no one is signed in on this device. Drives read-only UI.
+function isReadOnly() {
+  return !cloud.session;
+}
+
+// A recipe is editable only if the signed-in user owns it (loaded from their
+// household). Public rows opened by slug are flagged `foreign` and stay locked.
+function canEditRecipe(recipe) {
+  return Boolean(cloud.session) && !recipe?.foreign;
+}
+
+function mapPublicRow(row) {
+  const recipe = recipeFromRow(row);
+  recipe.foreign = true;
+  recipe.isPublic = true;
+  recipe.tags = Array.isArray(row.tags) ? row.tags : [];
+  return recipe;
+}
+
+// Fetch every public recipe for the browse gallery a signed-out visitor sees.
+async function loadPublicRecipes() {
+  if (!cloud.client) return [];
+  const { data, error } = await cloud.client
+    .from("public_recipes")
+    .select("*")
+    .order("updated_at", { ascending: false });
+  if (error) {
+    console.warn("Public recipes load failed:", error.message);
+    return [];
+  }
+  return (data || []).map(mapPublicRow);
+}
+
+async function fetchPublicRecipeBySlug(slug) {
+  if (!cloud.client || !slug) return null;
+  const { data, error } = await cloud.client
+    .from("public_recipes")
+    .select("*")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (error || !data) return null;
+  return mapPublicRow(data);
+}
+
+// Signed-out landing: show the public gallery (falling back to the seed recipes
+// if nothing is shared yet or the fetch fails), then open a deep-linked recipe.
+async function enterPublicMode() {
+  cloud.connected = false;
+  cloud.householdId = null;
+  cloud.memberId = null;
+  cloud.members = [];
+  const publicRecipes = await loadPublicRecipes();
+  state.recipes = publicRecipes.length
+    ? publicRecipes
+    : starterRecipes.map((recipe) => ({ ...recipe }));
+  saveRecipes();
+  render();
+  await openInitialSharedRecipe();
+}
+
+// Open the ?recipe=<slug> target on load. Resolves from the already-loaded set
+// first (own or public), otherwise fetches the single public row by slug.
+async function openInitialSharedRecipe() {
+  if (!initialRecipeSlug) return;
+  let recipe = state.recipes.find((item) => item.slug === initialRecipeSlug);
+  if (!recipe) {
+    recipe = await fetchPublicRecipeBySlug(initialRecipeSlug);
+    if (recipe) {
+      state.recipes = [recipe, ...state.recipes.filter((item) => item.id !== recipe.id)];
+      render();
+    }
+  }
+  if (recipe) openDrawer(recipe.id, { updateUrl: false });
+  else showToast("That shared recipe isn't available.");
 }
 
 // Persist a recipe's tags to the tags/recipe_tags tables: ensure a tag row
@@ -1032,16 +1122,17 @@ async function initSupabase() {
         showToast(`Recipes couldn't be loaded: ${error.message || "unknown error"}`);
       }
     } else {
-      // On sign-out, drop the household's private data so it isn't left on
-      // screen or in localStorage for the next person on this device. Reset to
-      // the seeded starter recipes a signed-out visitor would normally see.
-      cloud.connected = false;
-      cloud.householdId = null;
-      cloud.memberId = null;
-      cloud.members = [];
-      state.recipes = starterRecipes.map((recipe) => ({ ...recipe }));
-      saveRecipes();
-      render();
+      // Signed out (or initial no-session load): drop any household-private data
+      // and show the public gallery. enterPublicMode falls back to the seed
+      // recipes when nothing is shared, and opens a ?recipe=<slug> deep link.
+      try {
+        await enterPublicMode();
+      } catch (error) {
+        console.error(error);
+        state.recipes = starterRecipes.map((recipe) => ({ ...recipe }));
+        saveRecipes();
+        render();
+      }
     }
   });
   const { data, error } = await cloud.client.auth.getSession();
@@ -1272,10 +1363,23 @@ function renderFilters() {
   if (clearButton) clearButton.hidden = state.selectedTags.length === 0;
 }
 
+// Hide authoring controls and show the shared-view banner when no one is signed
+// in on this device (public browse mode).
+function updateReadOnlyChrome() {
+  const readOnly = isReadOnly();
+  const newButton = $("#new-recipe-button");
+  if (newButton) newButton.hidden = readOnly;
+  const emptyButton = $("#empty-new-button");
+  if (emptyButton) emptyButton.hidden = readOnly;
+  const banner = $("#readonly-banner");
+  if (banner) banner.hidden = !readOnly;
+}
+
 function render() {
   renderLabels();
   renderFilters();
   renderRecipes();
+  updateReadOnlyChrome();
   const titles = { library: "All recipes", favorites: "Family favorites", recent: "Recently cooked", pastry: "Pastry school" };
   $("#view-title").firstChild.textContent = titles[state.view] + " ";
   $$(".nav-item").forEach((item) => item.classList.toggle("is-active", item.dataset.view === state.view));
@@ -1454,11 +1558,87 @@ function onIngredientQtyChange(event) {
   applyDrawerScaling();
 }
 
-function openDrawer(id) {
+// Build the absolute permalink for a shared recipe: current origin + path with
+// only ?recipe=<slug> (drops dev/mock flags and any hash).
+function shareLinkFor(recipe) {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("recipe", recipe.slug);
+  return url.toString();
+}
+
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch { ok = false; }
+    textarea.remove();
+    return ok;
+  }
+}
+
+// Make a recipe public (minting/reusing its slug server-side) and copy the link.
+async function shareRecipe(recipe) {
+  if (!cloud.connected || !cloud.client) {
+    showToast("Sign in to share recipes.");
+    return;
+  }
+  try {
+    const { data, error } = await cloud.client.rpc("publish_recipe", {
+      target_recipe: recipe.id,
+      make_public: true
+    });
+    if (error) throw error;
+    recipe.slug = data;
+    recipe.isPublic = true;
+    const copied = await copyToClipboard(shareLinkFor(recipe));
+    showToast(copied ? "Share link copied to clipboard." : "Recipe shared. Copy the link from the drawer.");
+    render();
+    openDrawer(recipe.id, { updateUrl: false });
+  } catch (error) {
+    console.error(error);
+    showToast(`Couldn't share: ${error.message || "unknown error"}`);
+  }
+}
+
+async function unshareRecipe(recipe) {
+  if (!cloud.connected || !cloud.client) return;
+  try {
+    const { error } = await cloud.client.rpc("publish_recipe", {
+      target_recipe: recipe.id,
+      make_public: false
+    });
+    if (error) throw error;
+    recipe.isPublic = false;
+    showToast("Recipe is private again. Its link now stops working.");
+    render();
+    openDrawer(recipe.id, { updateUrl: false });
+  } catch (error) {
+    console.error(error);
+    showToast(`Couldn't stop sharing: ${error.message || "unknown error"}`);
+  }
+}
+
+async function copyShareLink(recipe) {
+  const copied = await copyToClipboard(shareLinkFor(recipe));
+  showToast(copied ? "Share link copied to clipboard." : shareLinkFor(recipe));
+}
+
+function openDrawer(id, { updateUrl = true } = {}) {
   const recipe = state.recipes.find((item) => item.id === id);
   if (!recipe) return;
   state.activeRecipe = recipe;
   drawerScale = 1;
+  const editable = canEditRecipe(recipe);
   const ratings = recipe.ratings || [];
   const reviewers = [...new Set([
     ...localReviewers,
@@ -1509,14 +1689,53 @@ function openDrawer(id) {
     <h3 class="drawer-section-title">Method</h3>
     ${methodListHtml(sections[0])}`;
 
+  // Family ratings and variants are household-private: the public_recipes view
+  // never exposes them, so foreign (shared-link) recipes hide the whole block.
+  // The rating form and add-variant button additionally require edit rights.
+  const ratingFormHtml = editable ? `
+    <form id="rating-form" class="rating-form">
+      <select name="member" aria-label="Reviewer">${reviewers.map((member) => `<option>${esc(member)}</option>`).join("")}</select>
+      <div class="star-rating" id="rating-stars" role="radiogroup" aria-label="Rating">
+        ${[1, 2, 3, 4, 5].map((star) => `
+          <span class="star-pair" data-star="${star}">
+            <span class="star-glyph" aria-hidden="true">★</span>
+            <button type="button" class="star-half star-half-left" data-score="${star - 0.5}" aria-label="${star - 0.5} stars"></button>
+            <button type="button" class="star-half star-half-right" data-score="${star}" aria-label="${star} stars"></button>
+          </span>`).join("")}
+      </div>
+      <input type="hidden" name="score" value="5" />
+      <input name="comment" placeholder="Optional note" aria-label="Rating note" />
+      <button class="ghost-button" type="submit">Save rating</button>
+    </form>` : "";
+  const variantAddHtml = editable
+    ? `<button class="ghost-button" style="margin-top:14px" id="add-variant-button">＋ Add a variant</button>`
+    : "";
+  const householdExtrasHtml = recipe.foreign ? "" : `
+    <hr class="drawer-rule" />
+    <h3 class="drawer-section-title">Family ratings · ★ ${averageRating(recipe).toFixed(1)} overall</h3>
+    <div class="family-rating">${ratings.map((rating) => `
+      <div class="member-rating"><span class="member-name">${esc(rating.member)}</span><span class="stars">${ratingStars(rating.score)}</span><span class="member-score">${(Number(rating.score) || 0).toFixed(1)}</span></div>`).join("")}</div>
+    ${ratingFormHtml}
+    <hr class="drawer-rule" />
+    <h3 class="drawer-section-title">Your versions</h3>
+    ${recipe.variants.map((variant) => `<div class="variant-card"><strong>${esc(variant.name)}</strong><p>${esc(variant.note)}</p></div>`).join("")}
+    ${variantAddHtml}`;
+
   $("#drawer-content").innerHTML = `
     <p class="eyebrow">Recipe archive · ${esc(recipe.source || "Personal recipe")}</p>
     <h2 class="drawer-title" id="drawer-title">${esc(recipe.title)}</h2>
     <p class="drawer-description">${esc(recipe.description)}</p>
+    ${editable ? `
     <div class="drawer-actions">
       <button class="ghost-button" id="edit-recipe-button">Edit recipe</button>
       <button class="danger-button" id="delete-recipe-button">Delete</button>
+      ${recipe.isPublic
+        ? `<button class="ghost-button" id="copy-link-button">Copy share link</button>
+           <button class="ghost-button" id="unshare-button">Stop sharing</button>`
+        : `<button class="ghost-button" id="share-button">Share recipe</button>`}
     </div>
+    ${recipe.isPublic ? `<p class="share-hint" id="share-hint">Public · anyone with the link can view</p>` : ""}
+    ` : `<p class="share-hint">Viewing a shared recipe (read-only).</p>`}
     ${recipeImageUrls(recipe).length ? `
       <div class="drawer-image-gallery">
         ${recipeImageUrls(recipe).map((imageUrl, index) => `<img src="${escAttr(imageUrl)}" alt="${escAttr(recipe.title)} photo ${index + 1}" />`).join("")}
@@ -1540,93 +1759,121 @@ function openDrawer(id) {
     <button type="button" class="ghost-button" id="estimate-nutrition-button">Estimate nutrition</button>
     `}
     ${ingredientsMethodHtml}
-    <hr class="drawer-rule" />
-    <h3 class="drawer-section-title">Family ratings · ★ ${averageRating(recipe).toFixed(1)} overall</h3>
-    <div class="family-rating">${ratings.map((rating) => `
-      <div class="member-rating"><span class="member-name">${esc(rating.member)}</span><span class="stars">${ratingStars(rating.score)}</span><span class="member-score">${(Number(rating.score) || 0).toFixed(1)}</span></div>`).join("")}</div>
-    <form id="rating-form" class="rating-form">
-      <select name="member" aria-label="Reviewer">${reviewers.map((member) => `<option>${esc(member)}</option>`).join("")}</select>
-      <div class="star-rating" id="rating-stars" role="radiogroup" aria-label="Rating">
-        ${[1, 2, 3, 4, 5].map((star) => `
-          <span class="star-pair" data-star="${star}">
-            <span class="star-glyph" aria-hidden="true">★</span>
-            <button type="button" class="star-half star-half-left" data-score="${star - 0.5}" aria-label="${star - 0.5} stars"></button>
-            <button type="button" class="star-half star-half-right" data-score="${star}" aria-label="${star} stars"></button>
-          </span>`).join("")}
-      </div>
-      <input type="hidden" name="score" value="5" />
-      <input name="comment" placeholder="Optional note" aria-label="Rating note" />
-      <button class="ghost-button" type="submit">Save rating</button>
-    </form>
-    <hr class="drawer-rule" />
-    <h3 class="drawer-section-title">Your versions</h3>
-    ${recipe.variants.map((variant) => `<div class="variant-card"><strong>${esc(variant.name)}</strong><p>${esc(variant.note)}</p></div>`).join("")}
-    <button class="ghost-button" style="margin-top:14px" id="add-variant-button">＋ Add a variant</button>`;
+    ${householdExtrasHtml}`;
   $("#recipe-drawer").hidden = false;
+  if (updateUrl && recipe.slug) syncDrawerUrl(recipe.slug);
   $$("#scale-controls .scale-button").forEach((button) => {
     button.addEventListener("click", () => { drawerScale = Number(button.dataset.scale); applyDrawerScaling(); });
   });
   $("#scale-reset").addEventListener("click", () => { drawerScale = 1; applyDrawerScaling(); });
   applyDrawerScaling();
-  $("#edit-recipe-button").addEventListener("click", () => openEditModal(recipe));
-  $("#delete-recipe-button").addEventListener("click", () => deleteRecipe(recipe));
+  // Edit/delete/share controls only render for recipes the viewer owns.
+  $("#edit-recipe-button")?.addEventListener("click", () => openEditModal(recipe));
+  $("#delete-recipe-button")?.addEventListener("click", () => deleteRecipe(recipe));
+  $("#share-button")?.addEventListener("click", () => shareRecipe(recipe));
+  $("#copy-link-button")?.addEventListener("click", () => copyShareLink(recipe));
+  $("#unshare-button")?.addEventListener("click", () => unshareRecipe(recipe));
   $("#estimate-nutrition-button")?.addEventListener("click", () => estimateNutrition(recipe));
+
+  // Rating stars + form exist only when editable; skip wiring otherwise.
   const ratingStarsControl = $("#rating-stars");
-  const scoreInput = $("#rating-form [name=score]");
-  let selectedScore = 5;
-  const paintRating = (score) => {
-    $$(".star-pair", ratingStarsControl).forEach((pair) => {
-      const star = Number(pair.dataset.star);
-      pair.classList.toggle("is-full", score >= star);
-      pair.classList.toggle("is-half", score >= star - 0.5 && score < star);
-    });
-  };
-  paintRating(selectedScore);
-  $$(".star-half", ratingStarsControl).forEach((button) => {
-    button.addEventListener("mouseenter", () => paintRating(Number(button.dataset.score)));
-    button.addEventListener("focus", () => paintRating(Number(button.dataset.score)));
-    button.addEventListener("click", () => {
-      selectedScore = Number(button.dataset.score);
-      scoreInput.value = selectedScore;
-      paintRating(selectedScore);
-    });
-  });
-  ratingStarsControl.addEventListener("mouseleave", () => paintRating(selectedScore));
-  ratingStarsControl.addEventListener("focusout", (event) => {
-    if (!ratingStarsControl.contains(event.relatedTarget)) paintRating(selectedScore);
-  });
-  $("#rating-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const data = new FormData(event.target);
-    const rating = {
-      member: data.get("member"),
-      score: Number(data.get("score")),
-      comment: data.get("comment") || "",
-      wouldMakeAgain: true
+  if (ratingStarsControl) {
+    const scoreInput = $("#rating-form [name=score]");
+    let selectedScore = 5;
+    const paintRating = (score) => {
+      $$(".star-pair", ratingStarsControl).forEach((pair) => {
+        const star = Number(pair.dataset.star);
+        pair.classList.toggle("is-full", score >= star);
+        pair.classList.toggle("is-half", score >= star - 0.5 && score < star);
+      });
     };
-    const existing = recipe.ratings.find((item) => item.member === rating.member);
-    if (existing) Object.assign(existing, rating);
-    else recipe.ratings.push(rating);
-    // Save locally first so the rating survives even if the cloud write fails.
-    saveManualRating(recipe, rating);
-    saveRecipes();
-    try {
-      await saveRatingToCloud(recipe, rating);
-      // Cloud is now the source of truth for this rating; drop the local copy
-      // so the next reload doesn't render it twice (cloud + local alias).
-      if (cloud.connected) removeManualRating(recipe, rating.member);
-      showToast("Rating saved.");
-    } catch (error) {
-      console.error(error);
-      showToast(`Rating saved locally: ${error.message || "cloud save failed"}`);
-    }
-    render();
-    openDrawer(recipe.id);
-  });
-  $("#add-variant-button").addEventListener("click", () => showToast("Variant editing is next on the build list."));
+    paintRating(selectedScore);
+    $$(".star-half", ratingStarsControl).forEach((button) => {
+      button.addEventListener("mouseenter", () => paintRating(Number(button.dataset.score)));
+      button.addEventListener("focus", () => paintRating(Number(button.dataset.score)));
+      button.addEventListener("click", () => {
+        selectedScore = Number(button.dataset.score);
+        scoreInput.value = selectedScore;
+        paintRating(selectedScore);
+      });
+    });
+    ratingStarsControl.addEventListener("mouseleave", () => paintRating(selectedScore));
+    ratingStarsControl.addEventListener("focusout", (event) => {
+      if (!ratingStarsControl.contains(event.relatedTarget)) paintRating(selectedScore);
+    });
+    $("#rating-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = new FormData(event.target);
+      const rating = {
+        member: data.get("member"),
+        score: Number(data.get("score")),
+        comment: data.get("comment") || "",
+        wouldMakeAgain: true
+      };
+      const existing = recipe.ratings.find((item) => item.member === rating.member);
+      if (existing) Object.assign(existing, rating);
+      else recipe.ratings.push(rating);
+      // Save locally first so the rating survives even if the cloud write fails.
+      saveManualRating(recipe, rating);
+      saveRecipes();
+      try {
+        await saveRatingToCloud(recipe, rating);
+        // Cloud is now the source of truth for this rating; drop the local copy
+        // so the next reload doesn't render it twice (cloud + local alias).
+        if (cloud.connected) removeManualRating(recipe, rating.member);
+        showToast("Rating saved.");
+      } catch (error) {
+        console.error(error);
+        showToast(`Rating saved locally: ${error.message || "cloud save failed"}`);
+      }
+      render();
+      openDrawer(recipe.id, { updateUrl: false });
+    });
+  }
+  $("#add-variant-button")?.addEventListener("click", () => showToast("Variant editing is next on the build list."));
 }
 
-function closeDrawer() { $("#recipe-drawer").hidden = true; state.activeRecipe = null; }
+function closeDrawer() {
+  $("#recipe-drawer").hidden = true;
+  state.activeRecipe = null;
+  clearDrawerUrl();
+}
+
+// Reflect the open recipe in the URL as ?recipe=<slug> (public recipes only).
+// pushState on open lets browser Back close the drawer; replaceState on close
+// drops the param without stacking an extra history entry.
+function syncDrawerUrl(slug) {
+  const url = new URL(window.location.href);
+  if (url.searchParams.get("recipe") === slug) return;
+  url.searchParams.set("recipe", slug);
+  window.history.pushState({ recipe: slug }, "", url);
+}
+
+function clearDrawerUrl() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("recipe")) return;
+  url.searchParams.delete("recipe");
+  window.history.replaceState({}, "", url);
+}
+
+// Browser back/forward: reconcile the drawer with the ?recipe=<slug> in the URL.
+window.addEventListener("popstate", async () => {
+  const slug = new URLSearchParams(window.location.search).get("recipe");
+  if (!slug) {
+    $("#recipe-drawer").hidden = true;
+    state.activeRecipe = null;
+    return;
+  }
+  let recipe = state.recipes.find((item) => item.slug === slug);
+  if (!recipe) {
+    recipe = await fetchPublicRecipeBySlug(slug);
+    if (recipe) {
+      state.recipes = [recipe, ...state.recipes.filter((item) => item.id !== recipe.id)];
+      render();
+    }
+  }
+  if (recipe) openDrawer(recipe.id, { updateUrl: false });
+});
 
 // --- Section editor (manual form + import review) ---------------------------
 // Both forms edit ingredients/method through a [data-section-editor] container
@@ -1991,6 +2238,7 @@ $("#auth-button").addEventListener("click", async () => {
   }
   await cloud.client.auth.signOut();
 });
+$("#readonly-signin-button")?.addEventListener("click", openAuthModal);
 $("#add-label-button").addEventListener("click", async () => {
   // Labels live as tags on recipes, so a new label has to attach to one.
   // Use the recipe currently open in the drawer; otherwise there's no target.
