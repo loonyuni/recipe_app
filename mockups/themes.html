@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="playfair">
+<html lang="en" data-theme="nyt">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,29 +7,32 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,500;0,6..96,600;1,6..96,500&family=Archivo:wght@400;500;600;700&family=Libre+Caslon+Display:ital,wght@0,400;1,400&family=Libre+Franklin:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Libre+Franklin:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <style>
-      /* Flat editorial: high-contrast display serif + clean grotesque, square
-         corners, hairline rules, no borders/gradients/shadows/italics. */
+      /* Readable, flat, white. Three directions: NYT-ish serif, Bon Appétit-ish
+         all-sans, and a fun palette. No gradients/rounding/shadows/italics. */
       :root {
-        --bg: #ffffff; --surface: #ffffff; --ink: #14140f; --muted: #79776e;
-        --line: #e4e4e0; --accent: #b23b2e; --accent-ink: #8f2c22; --tint: #f4efe9;
-        --serif: "Playfair Display", Georgia, serif; --sans: "Inter", system-ui, sans-serif;
-        --h1ls: -0.015em;
+        --bg: #ffffff; --surface: #ffffff; --ink: #1a1a1a; --muted: #6f6f6f;
+        --line: #e4e4e4; --accent: #2f6690; --accent-ink: #244f6f; --tint: #f2f2f2;
+        --badge-bg: #f2f2f2; --badge-ink: #444;
+        --serif: "Source Serif 4", Georgia, serif; --sans: "Libre Franklin", system-ui, sans-serif;
+        --hfont: var(--serif); --h1ls: -0.01em; --h1w: 600;
       }
-      html[data-theme="bodoni"] {
-        --bg: #fcfcfa; --surface: #ffffff; --ink: #111114; --muted: #86847d;
-        --line: #e6e6e2; --accent: #1f1f22; --accent-ink: #000000; --tint: #f0efec;
-        --serif: "Bodoni Moda", Georgia, serif; --sans: "Archivo", system-ui, sans-serif;
-        --h1ls: -0.005em;
+      html[data-theme="ba"] {
+        --bg: #ffffff; --surface: #ffffff; --ink: #111111; --muted: #737373;
+        --line: #e6e6e6; --accent: #111111; --accent-ink: #000000; --tint: #f3f3f3;
+        --badge-bg: #111111; --badge-ink: #ffffff;
+        --sans: "Inter", system-ui, sans-serif; --hfont: "Inter", system-ui, sans-serif;
+        --h1ls: -0.03em; --h1w: 800;
       }
-      html[data-theme="caslon"] {
-        --bg: #fbfaf7; --surface: #ffffff; --ink: #1a1a17; --muted: #7d7a70;
-        --line: #e3e0d8; --accent: #33475b; --accent-ink: #24333f; --tint: #eef0f2;
-        --serif: "Libre Caslon Display", Georgia, serif; --sans: "Libre Franklin", system-ui, sans-serif;
-        --h1ls: 0;
+      html[data-theme="fun"] {
+        --bg: #ffffff; --surface: #ffffff; --ink: #2c4251; --muted: #8a959e;
+        --line: #e2e4e0; --accent: #d16666; --accent-ink: #b34e4e; --tint: #eef3d5;
+        --badge-bg: #eef3d5; --badge-ink: #5f6b1f;
+        --sans: "Inter", system-ui, sans-serif; --hfont: "Space Grotesk", system-ui, sans-serif;
+        --h1ls: -0.02em; --h1w: 700;
       }
 
       * { box-sizing: border-box; }
@@ -42,7 +45,7 @@
       .theme-switch button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 
       .eyebrow { margin: 22px 0 8px; color: var(--accent); font: 600 11px var(--sans); letter-spacing: .14em; text-transform: uppercase; }
-      h1 { font-family: var(--serif); font-weight: 600; font-size: 52px; line-height: 1.02; margin: 4px 0 22px; letter-spacing: var(--h1ls); }
+      h1 { font-family: var(--hfont); font-weight: var(--h1w); font-size: 46px; line-height: 1.05; margin: 4px 0 22px; letter-spacing: var(--h1ls); }
       h1 em { font-style: normal; color: var(--accent); }
 
       .search { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--ink); padding: 15px 16px; margin-bottom: 30px; }
@@ -50,30 +53,30 @@
       .search input::placeholder { color: var(--muted); }
 
       .row { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 16px; border-top: 2px solid var(--ink); padding-top: 12px; }
-      .row h2 { font-family: var(--serif); font-weight: 600; font-size: 22px; margin: 0; }
+      .row h2 { font-family: var(--hfont); font-weight: var(--h1w); font-size: 22px; margin: 0; letter-spacing: var(--h1ls); }
       .row .count { color: var(--muted); font: 12px var(--sans); letter-spacing: .02em; }
 
       .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 22px 18px; }
       .card { background: transparent; display: flex; flex-direction: column; }
       .card__img { height: 132px; background: var(--tint); display: flex; align-items: end; padding: 12px; }
-      .card__img span { font-family: var(--serif); font-size: 20px; color: var(--accent-ink); opacity: .7; }
+      .card__img span { font-family: var(--hfont); font-size: 18px; color: var(--muted); }
       .card__body { padding: 12px 0 0; display: flex; flex-direction: column; gap: 7px; flex: 1; }
-      .card__body h3 { font-family: var(--serif); font-weight: 600; font-size: 18px; margin: 0; line-height: 1.18; letter-spacing: var(--h1ls); }
+      .card__body h3 { font-family: var(--hfont); font-weight: 600; font-size: 18px; margin: 0; line-height: 1.2; letter-spacing: var(--h1ls); }
       .card__body p { margin: 0; color: var(--muted); font: 13px/1.5 var(--sans); }
       .card__meta { margin-top: auto; display: flex; gap: 12px; color: var(--muted); font: 12px var(--sans); padding-top: 10px; border-top: 1px solid var(--line); }
-      .badge { margin-left: auto; background: var(--tint); color: var(--accent-ink); padding: 2px 8px; font: 600 11px var(--sans); }
+      .badge { margin-left: auto; background: var(--badge-bg); color: var(--badge-ink); padding: 2px 8px; font: 600 11px var(--sans); }
 
       .detail { margin-top: 46px; padding-top: 24px; border-top: 2px solid var(--ink); }
       .crumb { font: 12px var(--sans); color: var(--muted); margin-bottom: 16px; letter-spacing: .02em; }
       .crumb b { color: var(--ink); font-weight: 500; }
-      .detail h2 { font-family: var(--serif); font-weight: 600; font-size: 40px; margin: 0 0 10px; letter-spacing: var(--h1ls); line-height: 1.05; }
+      .detail h2 { font-family: var(--hfont); font-weight: var(--h1w); font-size: 38px; margin: 0 0 10px; letter-spacing: var(--h1ls); line-height: 1.08; }
       .detail .lead { color: var(--muted); font: 15px/1.6 var(--sans); margin: 0 0 18px; max-width: 60ch; }
       .pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
       .pill { border: 1px solid var(--line); padding: 6px 12px; font: 500 12px var(--sans); color: var(--muted); }
       .btnrow { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
       .btn { padding: 10px 16px; font: 600 13px var(--sans); cursor: pointer; border: 1px solid var(--ink); background: var(--surface); color: var(--ink); }
       .btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-      .sec-title { font-family: var(--serif); font-weight: 600; font-size: 19px; margin: 24px 0 10px; }
+      .sec-title { font-family: var(--hfont); font-weight: 600; font-size: 18px; margin: 24px 0 10px; }
       .ing { list-style: none; padding: 0; margin: 0; }
       .ing li { padding: 8px 0; border-bottom: 1px solid var(--line); font: 14px/1.5 var(--sans); }
       .steps { padding-left: 20px; margin: 0; }
@@ -84,10 +87,10 @@
   <body>
     <div class="wrap">
       <div class="theme-switch">
-        <span>Font pairing</span>
-        <button data-set="playfair" aria-pressed="true">Playfair × Inter</button>
-        <button data-set="bodoni" aria-pressed="false">Bodoni × Archivo</button>
-        <button data-set="caslon" aria-pressed="false">Caslon × Franklin</button>
+        <span>Style</span>
+        <button data-set="nyt" aria-pressed="true">NYT-ish (serif)</button>
+        <button data-set="ba" aria-pressed="false">Bon Appétit (sans)</button>
+        <button data-set="fun" aria-pressed="false">Fun palette</button>
       </div>
 
       <p class="eyebrow">Your household cookbook</p>
@@ -116,7 +119,7 @@
         <ul class="ing"><li>1/2 cup extra-virgin olive oil</li><li>3 garlic cloves, thinly sliced</li><li>2 cups frozen green peas</li><li>1/4 cup loosely packed mint leaves</li></ul>
         <div class="sec-title">Method</div>
         <ol class="steps"><li>Cook the oil and garlic over medium-low until the garlic just begins to caramelize.</li><li>Boil the peas 2 minutes, then blend with the garlic oil, mint, water, lemon, and salt until smooth.</li></ol>
-        <p class="note">Mockup only — sample layout to preview fonts &amp; color. Flip pairings with the buttons up top.</p>
+        <p class="note">Mockup only — sample layout to preview fonts &amp; color. Flip styles with the buttons up top.</p>
       </div>
     </div>
 
