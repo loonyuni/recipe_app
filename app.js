@@ -141,6 +141,7 @@ const state = {
   sort: "recent",
   view: "library",
   mode: "list", // "list" (grid) or "detail" (single recipe takes over the main column)
+  booting: false, // true until the first cloud/public load resolves (avoids a seed-recipe flash)
   minRating: 0, // minimum-rating filter (0 = off)
   activeRecipe: null,
   editingRecipeId: null,
@@ -824,6 +825,7 @@ async function loadCloudRecipesInner() {
       state.recipes.forEach((recipe) => { recipe.tags = tagsByRecipe.get(recipe.id) || []; });
     }
   }
+  state.booting = false;
   render();
   await openInitialSharedRecipe();
 }
@@ -892,6 +894,7 @@ async function enterPublicMode() {
     ? publicRecipes
     : starterRecipes.map((recipe) => ({ ...recipe }));
   saveRecipes();
+  state.booting = false;
   render();
   await openInitialSharedRecipe();
 }
@@ -1140,7 +1143,12 @@ async function persistNewRecipe(recipe) {
 
 async function initSupabase() {
   updateAuthButton();
-  if (!window.supabase || !window.KITCHEN_ARCHIVE_SUPABASE?.url || !window.KITCHEN_ARCHIVE_SUPABASE?.anonKey) return;
+  if (!window.supabase || !window.KITCHEN_ARCHIVE_SUPABASE?.url || !window.KITCHEN_ARCHIVE_SUPABASE?.anonKey) {
+    // No cloud configured: fall back to the seed recipes already in state.
+    state.booting = false;
+    render();
+    return;
+  }
   cloud.client = window.supabase.createClient(
     window.KITCHEN_ARCHIVE_SUPABASE.url,
     window.KITCHEN_ARCHIVE_SUPABASE.anonKey,
@@ -1165,6 +1173,8 @@ async function initSupabase() {
         await loadCloudRecipes();
       } catch (error) {
         console.error(error);
+        state.booting = false;
+        render();
         showToast(`Recipes couldn't be loaded: ${error.message || "unknown error"}`);
       }
     } else {
@@ -1184,12 +1194,14 @@ async function initSupabase() {
   const { data, error } = await cloud.client.auth.getSession();
   if (error) {
     console.error(error);
+    state.booting = false;
+    render();
     return;
   }
   cloud.session = data.session;
   updateAuthButton();
   if (cloud.session) {
-    try { await loadCloudRecipes(); } catch (loadError) { console.error(loadError); }
+    try { await loadCloudRecipes(); } catch (loadError) { console.error(loadError); state.booting = false; render(); }
   }
 }
 
@@ -1385,7 +1397,7 @@ function renderRecipes() {
     <article class="recipe-card" data-id="${escAttr(recipe.id)}" tabindex="0">
       <div class="recipe-card__image recipe-card__image--${escAttr(recipe.imageClass)}" aria-label="${escAttr(recipe.title)}">
         ${recipeImageUrls(recipe).length
-          ? `<img src="${escAttr(recipeImageUrls(recipe).at(-1))}" alt="${escAttr(recipe.title)}" />`
+          ? `<img src="${escAttr(recipeImageUrls(recipe).at(-1))}" alt="${escAttr(recipe.title)}" loading="lazy" decoding="async" />`
           : `<span>${esc(recipe.title.split(" ").slice(0, 2).join(" "))}</span>`}
       </div>
       <div class="recipe-card__body">
@@ -1437,10 +1449,18 @@ function render() {
     renderDetail(state.activeRecipe);
     return;
   }
-  renderRecipes();
   const titles = { library: "All recipes", recent: "Recently cooked", pastry: "Pastry school" };
   $("#view-title").firstChild.textContent = (titles[state.view] || "All recipes") + " ";
   $$(".nav-item").forEach((item) => item.classList.toggle("is-active", item.dataset.view === state.view));
+  // First paint while the cloud/public library loads: show a loading note instead
+  // of the seed recipes, so returning visitors don't see a flash-then-reload.
+  if (state.booting) {
+    $("#recipe-grid").innerHTML = `<p class="loading-note">Loading recipes…</p>`;
+    $("#empty-state").hidden = true;
+    $("#recipe-count").textContent = "";
+    return;
+  }
+  renderRecipes();
 }
 
 function toggleTag(tag) {
@@ -1889,7 +1909,7 @@ function renderDetail(recipe) {
       <div class="related-grid">
         ${relatedList.map((other) => `
           <button type="button" class="related-card" data-related-id="${escAttr(other.id)}">
-            ${recipeImageUrls(other).length ? `<img src="${escAttr(recipeImageUrls(other).at(-1))}" alt="${escAttr(other.title)}" />` : `<span class="related-card__ph">${esc(other.title.split(" ").slice(0, 2).join(" "))}</span>`}
+            ${recipeImageUrls(other).length ? `<img src="${escAttr(recipeImageUrls(other).at(-1))}" alt="${escAttr(other.title)}" loading="lazy" decoding="async" />` : `<span class="related-card__ph">${esc(other.title.split(" ").slice(0, 2).join(" "))}</span>`}
             <span class="related-card__title">${esc(other.title)}</span>
           </button>`).join("")}
       </div>
@@ -1916,7 +1936,7 @@ function renderDetail(recipe) {
     </div>
     ${recipeImageUrls(recipe).length ? `
       <div class="drawer-image-gallery">
-        ${recipeImageUrls(recipe).map((imageUrl, index) => `<img src="${escAttr(imageUrl)}" alt="${escAttr(recipe.title)} photo ${index + 1}" />`).join("")}
+        ${recipeImageUrls(recipe).map((imageUrl, index) => `<img src="${escAttr(imageUrl)}" alt="${escAttr(recipe.title)} photo ${index + 1}" loading="lazy" decoding="async" />`).join("")}
       </div>
     ` : ""}
     <div class="drawer-tags">${recipe.tags.map((tag) => `<span class="drawer-tag">${esc(tag)}</span>`).join("")}</div>
@@ -2656,5 +2676,8 @@ $("#otp-verify-button")?.addEventListener("click", async () => {
   }
 });
 
+// If the cloud is configured, hold the first paint in a loading state until the
+// public/household library resolves, so seed recipes don't flash then reload.
+state.booting = Boolean(window.KITCHEN_ARCHIVE_SUPABASE?.url && window.KITCHEN_ARCHIVE_SUPABASE?.anonKey);
 render();
 initSupabase();
