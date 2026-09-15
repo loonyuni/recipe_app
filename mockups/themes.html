@@ -1,52 +1,62 @@
 <!doctype html>
-<html lang="en" data-theme="source">
+<html lang="en" data-theme="classic">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Theme mockups · My Recipes</title>
+    <title>Color mockups · My Recipes</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Zilla+Slab:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <style>
-      /* Hierarchy: SERIF is the voice (headlines, titles, body, ingredients,
-         steps). SANS in ALL CAPS is the furniture (eyebrows, section labels,
-         meta, tags, buttons). Bold used sparingly for the eye's anchor points.
-         Flat, white, no gradients/rounding/shadows/italics. */
+      /* Fixed type (Source Serif voice + Inter ALL-CAPS labels). Only the color
+         scheme changes between themes. Flat/white, no gradients/rounding. */
       :root {
+        --sans: "Inter", system-ui, sans-serif; --serif: "Source Serif 4", Georgia, serif;
+        --hw: 700; --hls: -0.015em; --on-accent: #ffffff;
+        /* classic — ink + muted blue */
         --bg: #ffffff; --surface: #ffffff; --ink: #0f0f0f; --body: #23211e; --muted: #6f6f6f;
         --line: #e4e4e4; --accent: #1a4f86; --accent-ink: #143c66; --tint: #eef1f4; --badge-ink: #294a67;
-        --sans: "Inter", system-ui, sans-serif;
-        --serif: "Source Serif 4", Georgia, serif; --hw: 700; --hls: -0.015em;
       }
-      html[data-theme="fraunces"] {
-        --ink: #141210; --body: #2a2621; --accent: #b23b2e; --accent-ink: #8f2c22; --tint: #f3f1ee; --badge-ink: #6b4a44;
-        --serif: "Fraunces", Georgia, serif; --hw: 600; --hls: -0.02em;
+      html[data-theme="red"] {
+        --bg:#ffffff; --surface:#ffffff; --ink:#111111; --body:#262220; --muted:#6f6f6f;
+        --line:#e6e2e0; --accent:#c0392b; --accent-ink:#99271c; --tint:#f6ece9; --badge-ink:#8f2c22;
       }
-      html[data-theme="zilla"] {
-        --ink: #14140f; --body: #26241d; --accent: #a3341f; --accent-ink: #822818; --tint: #f2f0ea; --badge-ink: #6b3123;
-        --serif: "Zilla Slab", Georgia, serif; --hw: 600; --hls: -0.01em;
+      html[data-theme="forest"] {
+        --bg:#ffffff; --surface:#ffffff; --ink:#12140f; --body:#24261f; --muted:#6f6f6f;
+        --line:#e3e6e1; --accent:#2e6b54; --accent-ink:#1f4d3c; --tint:#e9f1ec; --badge-ink:#285f4a;
+      }
+      html[data-theme="terracotta"] {
+        --bg:#ffffff; --surface:#ffffff; --ink:#17130f; --body:#2a231d; --muted:#726a62;
+        --line:#e9e3dd; --accent:#c05d3c; --accent-ink:#9b4529; --tint:#f6ede7; --badge-ink:#8a4022;
+      }
+      html[data-theme="fun"] {
+        --bg:#ffffff; --surface:#ffffff; --ink:#2c4251; --body:#33475b; --muted:#8a959e;
+        --line:#dfe1de; --accent:#d16666; --accent-ink:#b34e4e; --tint:#eef3d5; --badge-ink:#5f6b1f;
+      }
+      html[data-theme="dark"] {
+        --bg:#141412; --surface:#1e1e1b; --ink:#f5f3ee; --body:#d8d5cd; --muted:#9a968c;
+        --line:#2e2e2a; --accent:#e2a34e; --accent-ink:#e2a34e; --tint:#23231f; --badge-ink:#e2a34e; --on-accent:#1a1712;
       }
 
       * { box-sizing: border-box; }
       body { margin: 0; background: var(--bg); color: var(--body); font-family: var(--serif); -webkit-font-smoothing: antialiased; }
       .wrap { max-width: 900px; margin: 0 auto; padding: 22px 20px 80px; }
 
-      /* --- uppercase sans label system --- */
       .kicker { font-family: var(--sans); text-transform: uppercase; letter-spacing: .14em; font-weight: 600; font-size: 11px; }
       .label { font-family: var(--sans); text-transform: uppercase; letter-spacing: .1em; font-weight: 700; }
 
       .theme-switch { position: sticky; top: 0; z-index: 5; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 14px 0; background: var(--bg); border-bottom: 1px solid var(--line); }
       .theme-switch > span { font-family: var(--sans); font-weight: 600; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
-      .theme-switch button { font-family: var(--sans); border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 8px 14px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; cursor: pointer; }
+      .theme-switch button { font-family: var(--sans); border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 8px 13px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; cursor: pointer; }
       .theme-switch button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 
       .eyebrow { margin: 22px 0 10px; color: var(--accent); }
       h1 { font-family: var(--serif); font-weight: var(--hw); font-size: 54px; line-height: 1.02; margin: 0 0 24px; letter-spacing: var(--hls); color: var(--ink); }
 
-      .search { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--ink); padding: 15px 16px; margin-bottom: 34px; }
+      .search { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--ink); padding: 15px 16px; margin-bottom: 34px; color: var(--muted); }
       .search input { flex: 1; border: 0; outline: 0; background: transparent; color: var(--ink); font-family: var(--sans); font-size: 15px; }
       .search input::placeholder { color: var(--muted); }
 
@@ -72,7 +82,7 @@
       .pill { border: 1px solid var(--line); padding: 6px 11px; color: var(--muted); font-size: 11px; }
       .btnrow { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
       .btn { padding: 11px 18px; font-size: 12px; cursor: pointer; border: 1px solid var(--ink); background: var(--surface); color: var(--ink); }
-      .btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+      .btn--primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
       .sec-title { color: var(--ink); font-size: 12px; margin: 28px 0 12px; }
       .ing { list-style: none; padding: 0; margin: 0; }
       .ing li { padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 16px; color: var(--body); }
@@ -85,10 +95,13 @@
   <body>
     <div class="wrap">
       <div class="theme-switch">
-        <span>Serif</span>
-        <button data-set="source" aria-pressed="true">Source Serif</button>
-        <button data-set="fraunces" aria-pressed="false">Fraunces</button>
-        <button data-set="zilla" aria-pressed="false">Zilla Slab</button>
+        <span>Palette</span>
+        <button data-set="classic" aria-pressed="true">Ink + Blue</button>
+        <button data-set="red" aria-pressed="false">Editorial Red</button>
+        <button data-set="forest" aria-pressed="false">Forest</button>
+        <button data-set="terracotta" aria-pressed="false">Terracotta</button>
+        <button data-set="fun" aria-pressed="false">Fun</button>
+        <button data-set="dark" aria-pressed="false">Dark</button>
       </div>
 
       <p class="eyebrow kicker">Your household cookbook</p>
@@ -117,7 +130,7 @@
         <ul class="ing"><li>1/2 cup extra-virgin olive oil</li><li>3 garlic cloves, thinly sliced</li><li>2 cups frozen green peas</li><li>1/4 cup loosely packed mint leaves</li></ul>
         <p class="sec-title label">Method</p>
         <ol class="steps"><li>Cook the oil and garlic over medium-low until the garlic just begins to caramelize.</li><li>Boil the peas 2 minutes, then blend with the garlic oil, mint, water, lemon, and salt until smooth.</li></ol>
-        <p class="note">Mockup only — sample layout to preview the type hierarchy. Flip the serif up top.</p>
+        <p class="note">Mockup only — same type, different color schemes. Flip palettes up top.</p>
       </div>
     </div>
 
