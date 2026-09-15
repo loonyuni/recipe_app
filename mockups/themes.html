@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="ink">
+<html lang="en" data-theme="playfair">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,72 +7,73 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=Spectral:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,500;0,6..96,600;1,6..96,500&family=Archivo:wght@400;500;600;700&family=Libre+Caslon+Display:ital,wght@0,400;1,400&family=Libre+Franklin:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <style>
-      /* ---- Three "refined editorial serif" presets ---- */
+      /* Three crisp editorial pairings: a high-contrast display serif for
+         headlines + a clean grotesque for everything else. */
       :root {
-        --bg: #fbf9f4; --surface: #ffffff; --ink: #1e1b17; --muted: #8a8175;
-        --line: #e6dfd2; --accent: #c05d3c; --accent-ink: #8f3f28;
-        --serif: "Newsreader", Georgia, serif; --sans: "Inter", system-ui, sans-serif;
-        --radius: 12px;
+        --bg: #ffffff; --surface: #ffffff; --ink: #14140f; --muted: #79776e;
+        --line: #ececec; --accent: #b23b2e; --accent-ink: #8f2c22;
+        --serif: "Playfair Display", Georgia, serif; --sans: "Inter", system-ui, sans-serif;
+        --radius: 8px; --h1ls: -0.015em;
       }
-      html[data-theme="slate"] {
-        --bg: #f6f5f2; --surface: #ffffff; --ink: #23262b; --muted: #7c8089;
-        --line: #e3e3df; --accent: #2e6b54; --accent-ink: #1f4d3c;
-        --serif: "Fraunces", Georgia, serif; --sans: "IBM Plex Sans", system-ui, sans-serif;
-        --radius: 10px;
+      html[data-theme="bodoni"] {
+        --bg: #fcfcfa; --surface: #ffffff; --ink: #111114; --muted: #86847d;
+        --line: #e9e9e6; --accent: #1f1f22; --accent-ink: #000000;
+        --serif: "Bodoni Moda", Georgia, serif; --sans: "Archivo", system-ui, sans-serif;
+        --radius: 6px; --h1ls: -0.005em;
       }
-      html[data-theme="claret"] {
-        --bg: #fcfcfb; --surface: #ffffff; --ink: #17171a; --muted: #86828b;
-        --line: #ececee; --accent: #7b2d3a; --accent-ink: #5c202b;
-        --serif: "Spectral", Georgia, serif; --sans: system-ui, "Helvetica Neue", sans-serif;
-        --radius: 14px;
+      html[data-theme="caslon"] {
+        --bg: #fbfaf7; --surface: #ffffff; --ink: #1a1a17; --muted: #7d7a70;
+        --line: #e6e3dc; --accent: #33475b; --accent-ink: #24333f;
+        --serif: "Libre Caslon Display", Georgia, serif; --sans: "Libre Franklin", system-ui, sans-serif;
+        --radius: 7px; --h1ls: 0;
       }
 
       * { box-sizing: border-box; }
       body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
       .wrap { max-width: 900px; margin: 0 auto; padding: 22px 20px 80px; }
 
-      .theme-switch { position: sticky; top: 0; z-index: 5; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 14px 0; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(6px); }
-      .theme-switch span { font: 500 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
+      .theme-switch { position: sticky; top: 0; z-index: 5; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 14px 0; background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+      .theme-switch span { font: 600 11px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
       .theme-switch button { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 8px 14px; font: 500 13px var(--sans); cursor: pointer; }
       .theme-switch button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 
-      .eyebrow { margin: 0 0 8px; color: var(--accent); font: 600 11px var(--sans); letter-spacing: .12em; text-transform: uppercase; }
-      h1 { font-family: var(--serif); font-weight: 500; font-size: 44px; line-height: 1.05; margin: 4px 0 20px; letter-spacing: -0.01em; }
-      h1 em { font-style: italic; color: var(--accent); }
+      .eyebrow { margin: 22px 0 8px; color: var(--accent); font: 600 11px var(--sans); letter-spacing: .14em; text-transform: uppercase; }
+      h1 { font-family: var(--serif); font-weight: 600; font-size: 52px; line-height: 1.02; margin: 4px 0 22px; letter-spacing: var(--h1ls); }
+      h1 em { font-style: italic; color: var(--accent); font-weight: 500; }
 
-      .search { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; box-shadow: 0 8px 24px rgba(30,27,23,.05); margin-bottom: 28px; }
+      .search { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; box-shadow: 0 6px 20px rgba(20,20,15,.04); margin-bottom: 30px; }
       .search input { flex: 1; border: 0; outline: 0; background: transparent; color: var(--ink); font: 15px var(--sans); }
       .search input::placeholder { color: var(--muted); }
 
-      .row { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 14px; }
-      .row h2 { font-family: var(--serif); font-weight: 500; font-size: 20px; margin: 0; }
-      .row .count { color: var(--muted); font: 12px var(--sans); }
+      .row { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 14px; border-top: 2px solid var(--ink); padding-top: 12px; }
+      .row h2 { font-family: var(--serif); font-weight: 600; font-size: 22px; margin: 0; }
+      .row .count { color: var(--muted); font: 12px var(--sans); letter-spacing: .02em; }
 
-      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 18px; }
       .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; }
-      .card__img { height: 128px; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, var(--surface)), color-mix(in srgb, var(--accent) 6%, var(--surface))); display: flex; align-items: end; padding: 12px; }
-      .card__img span { font-family: var(--serif); font-size: 22px; color: var(--accent-ink); opacity: .8; }
-      .card__body { padding: 14px 14px 16px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
-      .card__body h3 { font-family: var(--serif); font-weight: 600; font-size: 17px; margin: 0; line-height: 1.2; }
+      .card__img { height: 128px; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, var(--surface)), color-mix(in srgb, var(--accent) 5%, var(--surface))); display: flex; align-items: end; padding: 12px; }
+      .card__img span { font-family: var(--serif); font-style: italic; font-size: 22px; color: var(--accent-ink); opacity: .85; }
+      .card__body { padding: 15px 15px 16px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+      .card__body h3 { font-family: var(--serif); font-weight: 600; font-size: 18px; margin: 0; line-height: 1.18; letter-spacing: var(--h1ls); }
       .card__body p { margin: 0; color: var(--muted); font: 13px/1.5 var(--sans); }
       .card__meta { margin-top: auto; display: flex; gap: 12px; color: var(--muted); font: 12px var(--sans); padding-top: 10px; border-top: 1px solid var(--line); }
-      .badge { margin-left: auto; background: color-mix(in srgb, var(--accent) 14%, var(--surface)); color: var(--accent-ink); border-radius: 999px; padding: 2px 9px; font: 600 11px var(--sans); }
+      .badge { margin-left: auto; background: color-mix(in srgb, var(--accent) 12%, var(--surface)); color: var(--accent-ink); border-radius: 999px; padding: 2px 9px; font: 600 11px var(--sans); }
 
-      .detail { margin-top: 40px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 28px; }
-      .crumb { font: 12px var(--sans); color: var(--muted); margin-bottom: 14px; }
+      .detail { margin-top: 42px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 30px; }
+      .crumb { font: 12px var(--sans); color: var(--muted); margin-bottom: 16px; letter-spacing: .02em; }
       .crumb b { color: var(--ink); font-weight: 500; }
-      .detail h2 { font-family: var(--serif); font-weight: 500; font-size: 34px; margin: 0 0 8px; letter-spacing: -0.01em; }
+      .detail h2 { font-family: var(--serif); font-weight: 600; font-size: 40px; margin: 0 0 10px; letter-spacing: var(--h1ls); line-height: 1.05; }
       .detail .lead { color: var(--muted); font: 15px/1.6 var(--sans); margin: 0 0 18px; max-width: 60ch; }
       .pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
       .pill { border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font: 500 12px var(--sans); color: var(--muted); }
       .btnrow { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
-      .btn { border-radius: 10px; padding: 10px 16px; font: 600 13px var(--sans); cursor: pointer; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+      .btn { border-radius: 8px; padding: 10px 16px; font: 600 13px var(--sans); cursor: pointer; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
       .btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-      .sec-title { font-family: var(--serif); font-weight: 600; font-size: 18px; margin: 22px 0 10px; }
+      .sec-title { font-family: var(--serif); font-weight: 600; font-size: 19px; margin: 24px 0 10px; }
       .ing { list-style: none; padding: 0; margin: 0; }
       .ing li { padding: 8px 0; border-bottom: 1px solid var(--line); font: 14px/1.5 var(--sans); }
       .steps { padding-left: 20px; margin: 0; }
@@ -83,10 +84,10 @@
   <body>
     <div class="wrap">
       <div class="theme-switch">
-        <span>Theme</span>
-        <button data-set="ink" aria-pressed="true">Ink &amp; Cream</button>
-        <button data-set="slate" aria-pressed="false">Slate &amp; Forest</button>
-        <button data-set="claret" aria-pressed="false">Claret</button>
+        <span>Font pairing</span>
+        <button data-set="playfair" aria-pressed="true">Playfair × Inter</button>
+        <button data-set="bodoni" aria-pressed="false">Bodoni × Archivo</button>
+        <button data-set="caslon" aria-pressed="false">Caslon × Franklin</button>
       </div>
 
       <p class="eyebrow">Your household cookbook</p>
@@ -115,7 +116,7 @@
         <ul class="ing"><li>1/2 cup extra-virgin olive oil</li><li>3 garlic cloves, thinly sliced</li><li>2 cups frozen green peas</li><li>1/4 cup loosely packed mint leaves</li></ul>
         <div class="sec-title">Method</div>
         <ol class="steps"><li>Cook the oil and garlic over medium-low until the garlic just begins to caramelize.</li><li>Boil the peas 2 minutes, then blend with the garlic oil, mint, water, lemon, and salt until smooth.</li></ol>
-        <p class="note">Mockup only — sample layout to preview fonts &amp; color. Flip themes with the buttons up top.</p>
+        <p class="note">Mockup only — sample layout to preview fonts &amp; color. Flip pairings with the buttons up top.</p>
       </div>
     </div>
 
