@@ -11,7 +11,7 @@
       href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Manrope:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260904-sharing" />
+    <link rel="stylesheet" href="styles.css?v=20260914-browsing" />
   </head>
   <body>
     <div class="app-shell">
@@ -26,9 +26,6 @@
         <nav class="nav" aria-label="Primary navigation">
           <button class="nav-item is-active" data-view="library">
             <span class="nav-icon">⌂</span> Library
-          </button>
-          <button class="nav-item" data-view="favorites">
-            <span class="nav-icon">♡</span> Family favorites
           </button>
           <button class="nav-item" data-view="recent">
             <span class="nav-icon">◷</span> Recently cooked
@@ -47,6 +44,11 @@
             </span>
           </div>
           <div id="label-list" class="label-list"></div>
+        </div>
+
+        <div class="sidebar-section" id="recently-viewed-section" hidden>
+          <div class="sidebar-heading"><span>Recently viewed</span></div>
+          <div id="recently-viewed-list" class="label-list"></div>
         </div>
 
         <div class="sidebar-bottom">
@@ -77,6 +79,7 @@
           <button class="ghost-button" id="readonly-signin-button">Sign in to edit</button>
         </div>
 
+        <div id="list-view">
         <section class="hero">
           <div>
             <p class="eyebrow">Your household cookbook</p>
@@ -99,6 +102,12 @@
             <div id="active-filters" class="active-filters"></div>
             <button class="filter-button" id="filter-button">＋ Filter</button>
             <button class="filter-button" id="clear-filters-button" hidden>Clear all</button>
+            <select id="min-rating-select" class="min-rating-select" aria-label="Minimum rating">
+              <option value="0">Any rating</option>
+              <option value="3">3★+</option>
+              <option value="4">4★+</option>
+              <option value="4.5">4.5★+</option>
+            </select>
             <span id="result-count" class="result-count"></span>
           </div>
         </section>
@@ -114,6 +123,7 @@
               <select id="sort-select">
                 <option value="recent">Recently added</option>
                 <option value="rating">Highest rated</option>
+                <option value="mostcooked">Most cooked</option>
                 <option value="title">Title</option>
                 <option value="time">Quickest</option>
               </select>
@@ -128,14 +138,9 @@
             <button class="primary-button" id="empty-new-button">Add a recipe <span>↗</span></button>
           </div>
         </section>
+        </div>
+        <div id="detail-view" hidden></div>
       </main>
-    </div>
-
-    <div id="recipe-drawer" class="drawer-backdrop" hidden>
-      <aside class="recipe-drawer" aria-labelledby="drawer-title">
-        <button class="drawer-close" id="drawer-close" aria-label="Close recipe">×</button>
-        <div id="drawer-content"></div>
-      </aside>
     </div>
 
     <div id="recipe-modal" class="modal-backdrop" hidden>
@@ -338,12 +343,20 @@
             <button type="submit" class="primary-button" id="auth-submit">Sign in <span>↗</span></button>
           </div>
         </form>
+        <div class="auth-otp">
+          <p class="auth-otp-or">or skip the password</p>
+          <button type="button" class="ghost-button" id="auth-otp-button">Email me a sign-in code</button>
+          <div id="otp-fields" hidden>
+            <label>6-digit code<input id="otp-input" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" /></label>
+            <button type="button" class="primary-button" id="otp-verify-button">Verify code <span>↗</span></button>
+          </div>
+        </div>
       </section>
     </div>
 
     <div id="toast" class="toast" role="status"></div>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="supabase-config.js"></script>
-  <script src="app.js?v=20260904-sharing"></script>
+  <script src="app.js?v=20260914-browsing"></script>
   </body>
 </html>
