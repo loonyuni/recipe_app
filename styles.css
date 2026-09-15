@@ -335,6 +335,11 @@ h2 span { color: var(--muted); font: 400 11px var(--mono); vertical-align: middl
 
 .min-rating-select { border: 1px solid var(--line); background: var(--white); color: var(--ink); border-radius: 3px; font: 11px var(--mono); padding: 6px 8px; cursor: pointer; }
 
+.loading-note { color: var(--muted); font: 13px var(--mono); padding: 30px 0; }
+/* Keep the long card grid cheap to render/scroll on mobile: cards off-screen
+   skip layout/paint until near the viewport. */
+.recipe-card { content-visibility: auto; contain-intrinsic-size: 300px; }
+
 /* Full-page recipe detail */
 #detail-view { padding-top: 28px; }
 .recipe-detail { max-width: 760px; }
