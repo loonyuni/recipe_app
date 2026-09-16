@@ -5,7 +5,11 @@ const fs = require("fs");
 const vm = require("vm");
 const path = require("path");
 
-const appPath = process.argv[2] || path.join(__dirname, "..", "app.js");
+// Default: concatenate the ordered src files (browser loads them the same way,
+// sharing one global scope). Pass a single file path to check that instead.
+const root = path.join(__dirname, "..");
+const SRC_ORDER = ["src/helpers.js", "src/data.js", "src/ui.js"];
+const appPath = process.argv[2] || null;
 
 function makeEl() {
   const el = {
@@ -52,7 +56,9 @@ const sandbox = {
 sandbox.globalThis = sandbox; sandbox.self = sandbox;
 vm.createContext(sandbox);
 
-const code = fs.readFileSync(appPath, "utf8");
+const code = appPath
+  ? fs.readFileSync(appPath, "utf8")
+  : SRC_ORDER.map((f) => fs.readFileSync(path.join(root, f), "utf8")).join("\n");
 const exercise = `
 ;(function () {
   const first = state.recipes[0];
