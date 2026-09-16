@@ -547,6 +547,39 @@ async function uploadRecipePhoto(recipe, file) {
   }
 }
 
+// Remove a photo from the recipe's gallery: drop it from the DB image arrays
+// and, when the URL points at our own storage bucket, delete the underlying
+// object too. Imported recipes reference external URLs (not our bucket) — those
+// are just unlinked. The control is editable-gated, so visitors never see it.
+async function deleteRecipePhoto(recipe, url) {
+  if (!url) return;
+  if (!cloud.connected || !cloud.client || !cloud.householdId) { showToast("Sign in to manage photos."); return; }
+  if (!window.confirm("Delete this photo? This cannot be undone.")) return;
+  showToast("Deleting photo…");
+  try {
+    recipe.imageUrls = (recipe.imageUrls || []).filter((item) => item !== url);
+    if (recipe.imageUrl === url) recipe.imageUrl = recipe.imageUrls[0] || "";
+    saveRecipes();
+    const { error: dbError } = await cloud.client.from("recipes")
+      .update({ image_urls: recipe.imageUrls, image_url: recipe.imageUrl || null })
+      .eq("id", recipe.id).eq("household_id", cloud.householdId);
+    if (dbError) throw dbError;
+    // Best-effort: remove the stored file for URLs that live in our bucket.
+    const marker = "/recipe-photos/";
+    const at = url.indexOf(marker);
+    if (at !== -1) {
+      const path = decodeURIComponent(url.slice(at + marker.length).split("?")[0]);
+      const { error: rmError } = await cloud.client.storage.from("recipe-photos").remove([path]);
+      if (rmError) console.warn("Storage delete skipped:", rmError.message);
+    }
+    showToast("Photo deleted.");
+    render();
+  } catch (error) {
+    console.error(error);
+    showToast(`Couldn't delete photo: ${error.message || "delete failed"}`);
+  }
+}
+
 // Share a recipe's permalink: native share sheet on mobile (AirDrop, Messages,
 // etc.), copy-to-clipboard fallback on desktop / where Web Share is missing.
 async function shareRecipeNative(recipe) {
@@ -795,7 +828,10 @@ function renderDetail(recipe) {
     </div>
     ${recipeImageUrls(recipe).length ? `
       <div class="drawer-image-gallery">
-        ${recipeImageUrls(recipe).map((imageUrl, index) => `<img src="${escAttr(imageUrl)}" alt="${escAttr(recipe.title)} photo ${index + 1}" loading="lazy" decoding="async" />`).join("")}
+        ${recipeImageUrls(recipe).map((imageUrl, index) => `<figure class="gallery-item">
+          <img src="${escAttr(imageUrl)}" alt="${escAttr(recipe.title)} photo ${index + 1}" loading="lazy" decoding="async" />
+          ${editable ? `<button type="button" class="photo-delete" data-photo-url="${escAttr(imageUrl)}" aria-label="Delete photo ${index + 1}" title="Delete photo">×</button>` : ""}
+        </figure>`).join("")}
       </div>
     ` : ""}
     ${editable ? `
@@ -831,6 +867,9 @@ function renderDetail(recipe) {
   $("#photo-input")?.addEventListener("change", (event) => {
     const file = event.target.files && event.target.files[0];
     if (file) uploadRecipePhoto(recipe, file);
+  });
+  $$("#detail-view .photo-delete").forEach((button) => {
+    button.addEventListener("click", () => deleteRecipePhoto(recipe, button.dataset.photoUrl));
   });
   $$("#scale-controls .scale-button").forEach((button) => {
     button.addEventListener("click", () => { drawerScale = Number(button.dataset.scale); applyDrawerScaling(); });

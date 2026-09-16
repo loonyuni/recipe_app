@@ -211,7 +211,12 @@ h2 span { color: var(--muted); font: 400 11px var(--mono); vertical-align: middl
 .import-image-gallery { display: flex; gap: 7px; overflow-x: auto; padding: 3px 0; }
 .import-image-gallery img { width: 82px; height: 62px; flex: none; object-fit: cover; border: 1px solid var(--line); }
 .drawer-image-gallery { display: flex; gap: 10px; margin: 16px 0; padding-bottom: 6px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
-.drawer-image-gallery img { height: clamp(220px, 42vw, 340px); width: auto; max-width: 100%; object-fit: contain; background: #f4f4f2; border: 1px solid var(--line); flex: none; scroll-snap-align: start; }
+.gallery-item { position: relative; flex: none; margin: 0; scroll-snap-align: start; }
+.drawer-image-gallery img { height: clamp(220px, 42vw, 340px); width: auto; max-width: 100%; object-fit: contain; background: #f4f4f2; border: 1px solid var(--line); display: block; }
+.photo-delete { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: rgba(20,21,24,.6); color: #fff; font-size: 20px; line-height: 1; cursor: pointer; opacity: 0; transition: opacity .15s, background .15s; }
+.gallery-item:hover .photo-delete, .photo-delete:focus-visible { opacity: 1; }
+.photo-delete:hover { background: var(--tint); }
+@media (hover: none) { .photo-delete { opacity: 1; } }
 .member-rating { display: grid; grid-template-columns: 100px 1fr auto; align-items: center; gap: 8px; font-size: 11px; }
 .member-name { color: var(--muted); }
 .stars { color: var(--red); letter-spacing: 2px; }
