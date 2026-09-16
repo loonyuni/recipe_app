@@ -896,6 +896,21 @@ function saveCachedPublic(list) {
   try { localStorage.setItem(PUBLIC_CACHE_KEY, JSON.stringify(list)); } catch { /* quota */ }
 }
 
+// A static snapshot of the public library committed to the repo and served by
+// the Pages CDN — instant first paint on a device with no localStorage cache
+// (e.g. a friend opening a shared link cold), sidestepping the Supabase
+// cold-start. Always superseded by the live fetch below. Regenerate with:
+//   curl "<supabase>/rest/v1/public_recipes?select=*&order=updated_at.desc" \
+//     -H "apikey: <anon>" -o public-recipes.json
+async function loadSnapshot() {
+  try {
+    const res = await fetch("public-recipes.json");
+    if (!res.ok) return null;
+    const rows = await res.json();
+    return Array.isArray(rows) ? rows.map(mapPublicRow) : null;
+  } catch { return null; }
+}
+
 // Signed-out landing: show the public gallery (falling back to the seed recipes
 // if nothing is shared yet or the fetch fails), then open a deep-linked recipe.
 async function enterPublicMode() {
@@ -903,26 +918,30 @@ async function enterPublicMode() {
   cloud.householdId = null;
   cloud.memberId = null;
   cloud.members = [];
-  // 1. Instant paint from cache (no spinner) if we have a prior snapshot.
-  const cached = loadCachedPublic();
-  if (cached && cached.length) {
-    state.recipes = cached;
+  // 1. Instant paint: localStorage cache first, else the CDN snapshot.
+  let early = loadCachedPublic();
+  if (!(early && early.length)) {
+    const snap = await loadSnapshot();
+    if (snap && snap.length) early = snap;
+  }
+  if (early && early.length) {
+    state.recipes = early;
     state.booting = false;
     render();
     await openInitialSharedRecipe();
   }
-  // 2. Revalidate from the network and update in place.
+  // 2. Revalidate from Supabase and update in place.
   const publicRecipes = await loadPublicRecipes();
   if (publicRecipes.length) {
     state.recipes = publicRecipes;
     saveCachedPublic(publicRecipes);
-  } else if (!cached || !cached.length) {
+  } else if (!(early && early.length)) {
     state.recipes = starterRecipes.map((recipe) => ({ ...recipe }));
   }
   saveRecipes();
   state.booting = false;
   render();
-  if (!(cached && cached.length)) await openInitialSharedRecipe();
+  if (!(early && early.length)) await openInitialSharedRecipe();
 }
 
 // Open the ?recipe=<slug> target on load. Resolves from the already-loaded set
