@@ -400,7 +400,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .brand-name { font-family: var(--display); font-weight: 700; letter-spacing: -.02em; }
 .brand-name--italic { font-style: normal; color: var(--red); }
 .nav-item, .settings-button { font-family: var(--mono); font-size: 13px; font-weight: 500; text-transform: none; letter-spacing: 0; border-radius: 0; display: flex; align-items: center; gap: 10px; }
-.nav-item.is-active { background: var(--tint); color: var(--ink); font-weight: 600; }
+.nav-item.is-active { background: var(--tint); color: #fff; font-weight: 600; }
 .nav-icon { width: 16px; height: 16px; color: currentColor; font-size: inherit; }
 .sidebar-heading { font-family: var(--mono); font-weight: 600; }
 .label-item { font-family: var(--mono); border-radius: 0; }
