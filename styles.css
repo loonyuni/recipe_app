@@ -505,3 +505,8 @@ h1 em { color: var(--red); font-weight: 700; font-style: normal; }
   #detail-view { padding-top: 18px; }
   .drawer-title { font-size: 32px; }
 }
+
+/* Add-photo controls */
+.add-photo { margin: 14px 0 4px; }
+.modal-photo { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+.modal-photo .section-editor-label { flex: none; }

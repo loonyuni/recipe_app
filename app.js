@@ -1754,6 +1754,36 @@ async function copyShareLink(recipe) {
   showToast(copied ? "Link copied to clipboard." : shareLinkFor(recipe));
 }
 
+// Upload a photo to Supabase Storage (recipe-photos bucket) and append it to
+// the recipe's gallery. Lets you add a new shot every time you make it.
+async function uploadRecipePhoto(recipe, file) {
+  if (!file) return;
+  if (!cloud.connected || !cloud.client || !cloud.householdId) { showToast("Sign in to add photos."); return; }
+  showToast("Uploading photo…");
+  try {
+    const ext = ((file.name || "").split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+    const path = `${recipe.id}/${Date.now()}.${ext}`;
+    const { error: uploadError } = await cloud.client.storage
+      .from("recipe-photos")
+      .upload(path, file, { contentType: file.type || "image/jpeg", upsert: false });
+    if (uploadError) throw uploadError;
+    const { data } = cloud.client.storage.from("recipe-photos").getPublicUrl(path);
+    const url = data.publicUrl;
+    recipe.imageUrls = [...(recipe.imageUrls || []), url];
+    if (!recipe.imageUrl) recipe.imageUrl = url;
+    saveRecipes();
+    const { error: dbError } = await cloud.client.from("recipes")
+      .update({ image_urls: recipe.imageUrls, image_url: recipe.imageUrl })
+      .eq("id", recipe.id).eq("household_id", cloud.householdId);
+    if (dbError) throw dbError;
+    showToast("Photo added.");
+    render();
+  } catch (error) {
+    console.error(error);
+    showToast(`Couldn't add photo: ${error.message || "upload failed"}`);
+  }
+}
+
 // Share a recipe's permalink: native share sheet on mobile (AirDrop, Messages,
 // etc.), copy-to-clipboard fallback on desktop / where Web Share is missing.
 async function shareRecipeNative(recipe) {
@@ -2005,6 +2035,11 @@ function renderDetail(recipe) {
         ${recipeImageUrls(recipe).map((imageUrl, index) => `<img src="${escAttr(imageUrl)}" alt="${escAttr(recipe.title)} photo ${index + 1}" loading="lazy" decoding="async" />`).join("")}
       </div>
     ` : ""}
+    ${editable ? `
+    <div class="add-photo">
+      <button type="button" class="ghost-button" id="add-photo-button"><svg class="icon"><use href="#i-camera"/></svg> Add photo</button>
+      <input type="file" id="photo-input" accept="image/*" hidden />
+    </div>` : ""}
     <div class="drawer-tags">${recipe.tags.map((tag) => `<span class="drawer-tag">${esc(tag)}</span>`).join("")}</div>
     <div class="card-meta"><span><svg class="icon"><use href="#i-clock"/></svg> ${esc(formatTimeLabel(recipe.time))}</span><span>${esc(recipe.servings)} servings</span>${recipe.foreign ? "" : `<span>★ ${averageRating(recipe).toFixed(1)} household</span>`}</div>
     <hr class="drawer-rule" />
@@ -2029,6 +2064,11 @@ function renderDetail(recipe) {
   $("#breadcrumb-home").addEventListener("click", showList);
   $$("#detail-view [data-related-id]").forEach((el) => el.addEventListener("click", () => showRecipe(el.dataset.relatedId)));
   $("#made-this-button")?.addEventListener("click", () => logCook(recipe));
+  $("#add-photo-button")?.addEventListener("click", () => $("#photo-input")?.click());
+  $("#photo-input")?.addEventListener("change", (event) => {
+    const file = event.target.files && event.target.files[0];
+    if (file) uploadRecipePhoto(recipe, file);
+  });
   $$("#scale-controls .scale-button").forEach((button) => {
     button.addEventListener("click", () => { drawerScale = Number(button.dataset.scale); applyDrawerScaling(); });
   });
@@ -2217,6 +2257,8 @@ function openEditModal(recipe) {
   form.tags.value = (recipe.tags || []).join(", ");
   form.description.value = recipe.description || "";
   setupSectionEditor($("#recipe-section-editor"), getSections(recipe));
+  const photoRow = $("#modal-photo-row");
+  if (photoRow) photoRow.hidden = false;
   $("#recipe-modal").hidden = false;
   setTimeout(() => form.title.focus(), 0);
 }
@@ -2227,6 +2269,8 @@ function closeModal() {
   state.editingRecipeId = null;
   $("#modal-eyebrow").textContent = "Add to the archive";
   $("#modal-title").textContent = "New recipe";
+  const photoRow = $("#modal-photo-row");
+  if (photoRow) photoRow.hidden = true;
 }
 
 async function deleteRecipe(recipe) {
@@ -2755,6 +2799,12 @@ $("#menu-toggle")?.addEventListener("click", () => {
   if (scrim) scrim.hidden = !open;
 });
 $("#menu-scrim")?.addEventListener("click", closeMenu);
+$("#modal-add-photo")?.addEventListener("click", () => $("#modal-photo-input")?.click());
+$("#modal-photo-input")?.addEventListener("change", (event) => {
+  const file = event.target.files && event.target.files[0];
+  const recipe = state.recipes.find((item) => item.id === state.editingRecipeId);
+  if (file && recipe) uploadRecipePhoto(recipe, file);
+});
 
 // Testing aid: clear the app's local caches (public snapshot, cached recipes,
 // recent views) + any service-worker caches, then hard-reload past the HTTP
