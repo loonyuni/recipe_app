@@ -203,8 +203,8 @@ h2 span { color: var(--muted); font: 400 11px var(--mono); vertical-align: middl
 .star-half-right { right: 0; }
 .import-image-gallery { display: flex; gap: 7px; overflow-x: auto; padding: 3px 0; }
 .import-image-gallery img { width: 82px; height: 62px; flex: none; object-fit: cover; border: 1px solid var(--line); }
-.drawer-image-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 7px; margin: 16px 0; }
-.drawer-image-gallery img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--paper-deep); }
+.drawer-image-gallery { display: flex; gap: 10px; margin: 16px 0; padding-bottom: 6px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
+.drawer-image-gallery img { height: clamp(220px, 42vw, 340px); width: auto; max-width: 100%; object-fit: contain; background: #f4f4f2; border: 1px solid var(--line); flex: none; scroll-snap-align: start; }
 .member-rating { display: grid; grid-template-columns: 100px 1fr auto; align-items: center; gap: 8px; font-size: 11px; }
 .member-name { color: var(--muted); }
 .stars { color: var(--red); letter-spacing: 2px; }
