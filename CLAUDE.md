@@ -48,7 +48,7 @@ RLS-gated by household membership (`is_household_member`). Key tables: `recipes`
 
 ### Applying SQL / DB ops
 
-SQL migrations are loose `supabase-*.sql` files at root. Apply via the Supabase
+SQL migrations are numbered in `supabase/migrations/` (see its README). Apply via the Supabase
 **Management API** SQL endpoint (`POST /v1/projects/<ref>/database/query`), auth
 with the CLI token in the macOS keychain (`security find-generic-password -s "Supabase CLI" -a supabase -w`).
 Use `curl` (not urllib). Project ref `axajsafyosisflrjqpya`. `created_by` =
@@ -63,9 +63,10 @@ reading voice (titles, body, ingredients, steps) + **Inter ALL-CAPS** for labels
 rounding/shadows); near-black text, charcoal-blue rules/labels, coral fills.
 Icons are inline Lucide SVG `<symbol>`s in `index.html`.
 
-NOTE: `styles.css` currently has the original warm-paper theme plus an appended
-"Editorial theme" override block that re-skins it. This dual layer is tech debt
-(see `docs/audit-2026-09-16.md`); consolidate into one token set when touching it.
+Design tokens live in a single `:root` at the top of `styles.css`; the
+"Editorial component styles" section below skins the main surfaces flat. (A
+deeper merge of a few base component rules into that section is still open —
+best done with a browser to confirm pixel-parity; see `docs/audit-2026-09-16.md`.)
 
 ## Conventions & gotchas
 

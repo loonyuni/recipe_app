@@ -1749,11 +1749,6 @@ async function unshareRecipe(recipe) {
   }
 }
 
-async function copyShareLink(recipe) {
-  const copied = await copyToClipboard(shareLinkFor(recipe));
-  showToast(copied ? "Link copied to clipboard." : shareLinkFor(recipe));
-}
-
 // Upload a photo to Supabase Storage (recipe-photos bucket) and append it to
 // the recipe's gallery. Lets you add a new shot every time you make it.
 async function uploadRecipePhoto(recipe, file) {

@@ -1,18 +1,26 @@
 :root {
-  --paper: #f5f0e7;
-  --paper-deep: #ebe3d6;
-  --ink: #25221e;
-  --muted: #766e63;
-  --line: #d8cfc1;
-  --red: #b64935;
-  --red-dark: #8f3528;
-  --sage: #66755f;
-  --yellow: #e9c66a;
-  --white: #fffdf8;
-  --shadow: 0 20px 50px rgba(58, 43, 24, 0.12);
-  --display: "Fraunces", Georgia, serif;
-  --body: "Manrope", Arial, sans-serif;
-  --mono: "DM Mono", monospace;
+  /* Single source of truth. Editorial theme: Source Serif voice + Inter ALL-CAPS
+     labels; near-black text, charcoal-blue rules/labels, coral fills, turquoise
+     accent. Flat surfaces (no gradients/rounding/shadows on content). */
+  --paper: #ffffff;        /* page background */
+  --paper-deep: #eef1f4;   /* subtle fills (hover, chips, panels) */
+  --ink: #141518;          /* headings / titles */
+  --read: #23262b;         /* body reading text */
+  --muted: #4f6273;        /* labels, meta, secondary (charcoal blue-gray) */
+  --line: #d5dce2;         /* hairline dividers */
+  --rule: #2c4251;         /* strong rules + outlines (charcoal blue) */
+  --red: #1a7a76;          /* accent: buttons, eyebrows, links, step numbers (turquoise) */
+  --red-dark: #145f5c;     /* accent hover */
+  --sage: #2c4251;         /* legacy alias → charcoal blue */
+  --tint: #db524d;         /* coral fills: card tiles, badges, tags, active nav */
+  --badge-ink: #ffffff;    /* text on coral fills */
+  --on-accent: #ffffff;    /* text on the accent */
+  --white: #ffffff;
+  --yellow: #e9c66a;       /* retained for legacy warm accents (file-drop mark) */
+  --shadow: 0 12px 34px rgba(20,21,24,.10);
+  --display: "Source Serif 4", Georgia, serif;  /* headings + reading voice */
+  --body: "Source Serif 4", Georgia, serif;
+  --mono: "Inter", system-ui, sans-serif;        /* labels / UI / ALL-CAPS */
 }
 
 * { box-sizing: border-box; }
@@ -367,21 +375,9 @@ h2 span { color: var(--muted); font: 400 11px var(--mono); vertical-align: middl
 .share-hint { margin: 8px 0 0; color: var(--sage); font: 500 11px var(--mono); letter-spacing: .04em; }
 
 /* =========================================================================
-   Editorial theme — Source Serif voice + Inter ALL-CAPS labels, coral "Fun"
-   palette (near-black text, charcoal-blue rules/labels, poppy coral accent).
-   Redefining the tokens re-skins the whole app; the overrides below give the
-   flat editorial treatment on the main surfaces.
+   Editorial component styles — flat treatment on the main surfaces. Design
+   tokens live in the single :root at the top of this file.
    ========================================================================= */
-:root {
-  --paper: #ffffff; --paper-deep: #eef1f4; --ink: #141518; --read: #23262b;
-  --muted: #4f6273; --line: #d5dce2; --rule: #2c4251;
-  --red: #1a7a76; --red-dark: #145f5c; --sage: #2c4251; --white: #ffffff;
-  --tint: #db524d; --badge-ink: #ffffff; --on-accent: #ffffff;
-  --display: "Source Serif 4", Georgia, serif;
-  --body: "Source Serif 4", Georgia, serif;
-  --mono: "Inter", system-ui, sans-serif;
-  --shadow: 0 12px 34px rgba(20,21,24,.10);
-}
 body { color: var(--read); }
 
 /* icon system (inline Lucide SVGs) */

@@ -57,14 +57,8 @@ See [`CODEX_IMPORT.md`](./CODEX_IMPORT.md).
 
 Supabase provides authentication, household membership, recipe storage, ratings, and the recipe-distillation Edge Function.
 
-Read [`SUPABASE_SETUP.md`](./SUPABASE_SETUP.md), then run these files in the Supabase SQL Editor:
-
-1. [`supabase-schema.sql`](./supabase-schema.sql)
-2. [`supabase-onboarding.sql`](./supabase-onboarding.sql)
-3. [`supabase-images.sql`](./supabase-images.sql)
-4. [`supabase-permissions-fix.sql`](./supabase-permissions-fix.sql)
-
-The image backfill script for the existing salmon recipe is [`supabase-backfill-images.sql`](./supabase-backfill-images.sql).
+Read [`SUPABASE_SETUP.md`](./SUPABASE_SETUP.md), then run the numbered migrations in
+[`supabase/migrations/`](./supabase/migrations/) in order (`0001_schema` … `0008_backfill_images`).
 
 The Edge Function is deployed with:
 
