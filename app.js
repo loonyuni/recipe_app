@@ -2822,6 +2822,12 @@ $("#reset-cache")?.addEventListener("click", async () => {
   location.replace(location.pathname + "?fresh=" + Date.now());
 });
 
+// Register the service worker (network-first: fresh after every deploy, offline
+// fallback). Harmless if unsupported.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+
 // If the cloud is configured, hold the first paint in a loading state until the
 // public/household library resolves, so seed recipes don't flash then reload.
 state.booting = Boolean(window.KITCHEN_ARCHIVE_SUPABASE?.url && window.KITCHEN_ARCHIVE_SUPABASE?.anonKey);
