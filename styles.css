@@ -184,6 +184,9 @@ h2 span { color: var(--muted); font: 400 11px var(--mono); vertical-align: middl
 .scale-button.is-active { border-color: var(--red); background: var(--red); color: white; }
 .scale-reset { margin-left: auto; padding: 6px 11px; font-size: 11px; }
 .scale-summary { margin: 11px 0 0; color: var(--ink); font: 500 13px var(--display); }
+.scale-servings { width: 54px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--white); color: var(--ink); font: 600 13px var(--mono); text-align: center; }
+.scale-servings:hover, .scale-servings:focus { border-color: var(--red); outline: none; }
+.scale-factor { color: var(--muted); }
 .scale-hint { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
 .scaled-ingredient-list { list-style: none; padding-left: 0; }
 .scaled-ingredient-list li { display: flex; align-items: baseline; gap: 8px; }
@@ -311,11 +314,18 @@ h2 span { color: var(--muted); font: 400 11px var(--mono); vertical-align: middl
   .search-box kbd { display: none; }
   .section-heading { align-items: start; gap: 20px; flex-direction: column; }
   .recipe-grid { grid-template-columns: 1fr; }
-  .recipe-card__image { height: 115px; }
+  .recipe-card__image { height: auto; aspect-ratio: 16 / 10; }
   .recipe-drawer { padding: 44px 24px 50px; }
   .drawer-title { font-size: 40px; }
   .import-tabs { overflow-x: auto; }
   .import-tab { white-space: nowrap; }
+  /* Scale panel: the "Scale recipe" label takes its own line so the buttons and
+     Reset share the next row cleanly, instead of Reset wrapping to a lonely
+     right-aligned line. Buttons and inputs get roomier tap targets. */
+  .scale-controls { gap: 8px 10px; }
+  .scale-eyebrow { flex-basis: 100%; }
+  .scale-button { padding: 8px 15px; font-size: 13px; }
+  .scale-servings { width: 62px; padding: 5px 8px; font-size: 15px; }
 }
 
 /* Multi-section recipes: stacked component blocks in the drawer */
@@ -370,8 +380,6 @@ h2 span { color: var(--muted); font: 400 11px var(--mono); vertical-align: middl
 .card-cook-badge { flex: none; padding: 4px 6px; background: var(--sage); color: var(--white); border-radius: 2px; font: 9px var(--mono); }
 
 /* Public sharing */
-.readonly-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 8px; padding: 10px 14px; background: var(--paper-deep); border: 1px solid var(--line); border-radius: 6px; color: var(--muted); font-size: 12px; }
-.readonly-banner .ghost-button { flex: none; }
 .share-hint { margin: 8px 0 0; color: var(--sage); font: 500 11px var(--mono); letter-spacing: .04em; }
 
 /* =========================================================================
@@ -432,11 +440,16 @@ h1 em { color: var(--red); font-weight: 700; font-style: normal; }
 /* cards → flat image-and-caption tiles */
 .recipe-card { background: transparent; border: 0; border-radius: 0; min-height: 0; overflow: visible; transition: none; }
 .recipe-card:hover { transform: none; box-shadow: none; }
-.recipe-card__image { height: 128px; padding: 0; border-radius: 0; background: var(--tint); }
-.recipe-card:nth-child(3n+2) .recipe-card__image, .recipe-card:nth-child(3n) .recipe-card__image { background: var(--tint); }
-.recipe-card__image--pasta, .recipe-card__image--fish, .recipe-card__image--sweet { background: var(--tint) !important; }
+/* Magazine-overlay cards: title sits on the photo behind a bottom gradient. */
+.recipe-card__image { height: auto; aspect-ratio: 4 / 3; padding: 0; border-radius: 10px; overflow: hidden; position: relative; background: var(--tint); }
+.recipe-card__image img { transition: transform .45s ease; }
+.recipe-card:hover .recipe-card__image img { transform: scale(1.05); }
+.recipe-card__image::after { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, rgba(20,21,24,0) 42%, rgba(20,21,24,.76)); }
+.recipe-card__image .card-title { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; margin: 0; padding: 14px 16px; color: #fff; font: 600 21px/1.08 var(--display); letter-spacing: -.015em; text-shadow: 0 1px 14px rgba(0,0,0,.45); }
+/* Photo-less cards: a flat coral block behind the same overlay title.
+   (--tint is the coral fill; --red is the turquoise accent — names are legacy.) */
+.recipe-card__image--empty { background: var(--tint) !important; }
 .recipe-card__body { padding: 12px 0 0; }
-.recipe-card h3 { font: 600 20px/1.16 var(--display); letter-spacing: -.015em; color: var(--ink); }
 .recipe-card p { color: var(--read); font-family: var(--body); font-size: 13px; }
 .card-meta { font-family: var(--mono); text-transform: uppercase; letter-spacing: .06em; font-size: 11px; color: var(--muted); align-items: center; }
 .card-meta .icon { width: 13px; height: 13px; }
@@ -472,7 +485,6 @@ h1 em { color: var(--red); font-weight: 700; font-style: normal; }
 .scale-summary { font-family: var(--display); }
 .modal input, .modal textarea { font-family: var(--mono); border-radius: 0; background: var(--white); }
 .modal h2 { font-family: var(--display); }
-.readonly-banner { background: var(--paper-deep); border-radius: 0; }
 .share-hint { color: var(--muted); }
 .toast { border-radius: 0; }
 

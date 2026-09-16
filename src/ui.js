@@ -190,13 +190,13 @@ function renderRecipes() {
   $("#result-count").textContent = state.search || state.selectedTags.length ? `${recipes.length} matches` : "";
   $("#recipe-grid").innerHTML = recipes.map((recipe) => `
     <article class="recipe-card" data-id="${escAttr(recipe.id)}" tabindex="0">
-      <div class="recipe-card__image recipe-card__image--${escAttr(recipe.imageClass)}" aria-label="${escAttr(recipe.title)}">
+      <div class="recipe-card__image recipe-card__image--${escAttr(recipe.imageClass)}${recipeImageUrls(recipe).length ? "" : " recipe-card__image--empty"}">
         ${recipeImageUrls(recipe).length
           ? `<img src="${escAttr(recipeImageUrls(recipe).at(-1))}" alt="${escAttr(recipe.title)}" loading="lazy" decoding="async" />`
-          : `<span>${esc(recipe.title.split(" ").slice(0, 2).join(" "))}</span>`}
+          : ""}
+        <h3 class="card-title">${esc(recipe.title)}</h3>
       </div>
       <div class="recipe-card__body">
-        <h3>${esc(recipe.title)}</h3>
         <p>${esc(recipe.description)}</p>
         <div class="card-meta"><span><svg class="icon"><use href="#i-clock"/></svg> ${esc(formatTimeLabel(recipe.time))}</span><span>${esc(recipe.servings)} servings</span>${recipe.cookCount ? `<span class="card-cook-badge">Made ${esc(recipe.cookCount)}×</span>` : ""}</div>
         <div class="card-footer">
@@ -228,8 +228,6 @@ function updateReadOnlyChrome() {
   if (newButton) newButton.hidden = readOnly;
   const emptyButton = $("#empty-new-button");
   if (emptyButton) emptyButton.hidden = readOnly;
-  const banner = $("#readonly-banner");
-  if (banner) banner.hidden = !readOnly;
 }
 
 function render() {
@@ -400,10 +398,14 @@ function applyDrawerScaling() {
     $$(".ingredient-qty", list).forEach((input) => input.addEventListener("change", onIngredientQtyChange));
   });
 
-  const summary = $("#scale-summary");
-  if (summary) {
-    summary.textContent = `${formatQuantity(factor)}× · makes ${formatScaledServings(recipe.servings, factor)} servings`;
+  // Servings input reflects the current factor. Don't overwrite it while the
+  // user is mid-edit (focused); the change handler commits and re-renders.
+  const servingsInput = $("#scale-servings");
+  if (servingsInput && document.activeElement !== servingsInput) {
+    servingsInput.value = formatScaledServings(recipe.servings, factor);
   }
+  const factorEl = $("#scale-factor");
+  if (factorEl) factorEl.textContent = ` · ${formatQuantity(factor)}×`;
   $$("#scale-controls .scale-button").forEach((button) => {
     button.classList.toggle("is-active", Number(button.dataset.scale) === factor);
   });
@@ -428,6 +430,22 @@ function onIngredientQtyChange(event) {
     return;
   }
   drawerScale = newValue / original;
+  applyDrawerScaling();
+}
+
+// User typed a target serving count. Derive the scale factor from the recipe's
+// base servings, then rescale every ingredient (and nutrition) to match.
+function onServingsChange(event) {
+  const recipe = state.activeRecipe;
+  if (!recipe) return;
+  const base = Number(recipe.servings) || 0;
+  const parsed = parseLeadingQuantity(event.target.value);
+  const target = parsed ? parsed.value : Number(event.target.value);
+  if (base <= 0 || !Number.isFinite(target) || target <= 0) {
+    applyDrawerScaling(); // reject bad input and restore the last valid display
+    return;
+  }
+  drawerScale = target / base;
   applyDrawerScaling();
 }
 
@@ -678,14 +696,14 @@ function renderDetail(recipe) {
       <div class="scale-controls" id="scale-controls">
         <span class="scale-eyebrow">Scale recipe</span>
         <div class="scale-buttons">
+          <button type="button" class="scale-button" data-scale="0.5">0.5×</button>
           <button type="button" class="scale-button" data-scale="1">1×</button>
           <button type="button" class="scale-button" data-scale="2">2×</button>
-          <button type="button" class="scale-button" data-scale="3">3×</button>
         </div>
-        <button type="button" class="ghost-button scale-reset" id="scale-reset">Reset to 1×</button>
+        <button type="button" class="ghost-button scale-reset" id="scale-reset">Reset</button>
       </div>
-      <p class="scale-summary" id="scale-summary"></p>
-      <p class="scale-hint">Tip: type any ingredient's quantity (e.g. what you actually have) and the rest scale to match.</p>
+      <p class="scale-summary">Makes <input class="scale-servings" id="scale-servings" type="text" inputmode="decimal" aria-label="Target servings" /> servings<span class="scale-factor" id="scale-factor"></span></p>
+      <p class="scale-hint">Tip: set the servings, or type any ingredient's quantity — the rest scale to match.</p>
     </div>`;
   const methodListHtml = (section) => `<ol class="instruction-list">${section.instructions.map((step) => `<li>${esc(step)}</li>`).join("")}</ol>`;
   const ingredientsMethodHtml = isSectionedRecipe(sections)
@@ -818,6 +836,8 @@ function renderDetail(recipe) {
     button.addEventListener("click", () => { drawerScale = Number(button.dataset.scale); applyDrawerScaling(); });
   });
   $("#scale-reset").addEventListener("click", () => { drawerScale = 1; applyDrawerScaling(); });
+  const servingsInput = $("#scale-servings");
+  if (servingsInput) servingsInput.addEventListener("change", onServingsChange);
   applyDrawerScaling();
   // Edit/delete/share controls only render for recipes the viewer owns.
   $("#edit-recipe-button")?.addEventListener("click", () => openEditModal(recipe));
@@ -1282,7 +1302,6 @@ $("#auth-button").addEventListener("click", async () => {
   }
   await cloud.client.auth.signOut();
 });
-$("#readonly-signin-button")?.addEventListener("click", openAuthModal);
 $("#add-label-button").addEventListener("click", async () => {
   // Labels live as tags on recipes, so a new label has to attach to one.
   // Use the recipe currently open in the drawer; otherwise there's no target.
