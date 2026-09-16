@@ -63,9 +63,10 @@ reading voice (titles, body, ingredients, steps) + **Inter ALL-CAPS** for labels
 rounding/shadows); near-black text, charcoal-blue rules/labels, coral fills.
 Icons are inline Lucide SVG `<symbol>`s in `index.html`.
 
-NOTE: `styles.css` currently has the original warm-paper theme plus an appended
-"Editorial theme" override block that re-skins it. This dual layer is tech debt
-(see `docs/audit-2026-09-16.md`); consolidate into one token set when touching it.
+Design tokens live in a single `:root` at the top of `styles.css`; the
+"Editorial component styles" section below skins the main surfaces flat. (A
+deeper merge of a few base component rules into that section is still open —
+best done with a browser to confirm pixel-parity; see `docs/audit-2026-09-16.md`.)
 
 ## Conventions & gotchas
 
