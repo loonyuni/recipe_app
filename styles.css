@@ -375,8 +375,8 @@ h2 span { color: var(--muted); font: 400 11px var(--mono); vertical-align: middl
 :root {
   --paper: #ffffff; --paper-deep: #eef1f4; --ink: #141518; --read: #23262b;
   --muted: #4f6273; --line: #d5dce2; --rule: #2c4251;
-  --red: #db524d; --red-dark: #bd413c; --sage: #2c4251; --white: #ffffff;
-  --tint: #e4edba; --badge-ink: #515e12; --on-accent: #ffffff;
+  --red: #1a7a76; --red-dark: #145f5c; --sage: #2c4251; --white: #ffffff;
+  --tint: #db524d; --badge-ink: #ffffff; --on-accent: #ffffff;
   --display: "Source Serif 4", Georgia, serif;
   --body: "Source Serif 4", Georgia, serif;
   --mono: "Inter", system-ui, sans-serif;
@@ -415,7 +415,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .search-box input { font-family: var(--mono); }
 .search-icon { color: var(--muted); font-size: 18px; }
 .eyebrow { color: var(--red); }
-h1 { font: 700 clamp(38px, 6vw, 62px)/1.04 var(--display); letter-spacing: -.02em; }
+h1 { font: 700 clamp(34px, 5.4vw, 60px)/1.04 var(--display); letter-spacing: -.02em; max-width: none; white-space: nowrap; }
 h1 em { color: var(--red); font-weight: 700; font-style: normal; }
 
 /* filter row */
@@ -495,7 +495,7 @@ h1 em { color: var(--red); font-weight: 700; font-style: normal; }
   .topbar-actions { flex: 0 0 auto; margin-left: auto; gap: 8px; }
   /* search-first: shrink the hero so the search bar leads */
   .hero { padding: 24px 0 18px; }
-  h1 { font-size: 34px; letter-spacing: -.01em; }
+  h1 { font-size: 26px; letter-spacing: -.01em; }
   .search-section { padding-bottom: 28px; }
   .recipe-grid { grid-template-columns: 1fr; }
   #detail-view { padding-top: 18px; }
