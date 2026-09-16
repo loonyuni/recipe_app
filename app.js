@@ -2756,6 +2756,27 @@ $("#menu-toggle")?.addEventListener("click", () => {
 });
 $("#menu-scrim")?.addEventListener("click", closeMenu);
 
+// Testing aid: clear the app's local caches (public snapshot, cached recipes,
+// recent views) + any service-worker caches, then hard-reload past the HTTP
+// cache with a busting query. Keeps the auth session and manual ratings.
+$("#reset-cache")?.addEventListener("click", async () => {
+  try {
+    ["kitchen-archive-public", "kitchen-archive-recipes", "kitchen-archive-recent-views", "kitchen-archive-last-import-debug"]
+      .forEach((key) => localStorage.removeItem(key));
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+    if (navigator.serviceWorker) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+  } catch (error) {
+    console.warn("Reset cache:", error);
+  }
+  location.replace(location.pathname + "?fresh=" + Date.now());
+});
+
 // If the cloud is configured, hold the first paint in a loading state until the
 // public/household library resolves, so seed recipes don't flash then reload.
 state.booting = Boolean(window.KITCHEN_ARCHIVE_SUPABASE?.url && window.KITCHEN_ARCHIVE_SUPABASE?.anonKey);
