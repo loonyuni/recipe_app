@@ -79,10 +79,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .label-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sage); }
 .label-count { margin-left: auto; color: #a39a8d; font: 11px var(--mono); }
 .sidebar-bottom { margin-top: auto; }
-.archive-note { display: flex; gap: 10px; padding: 14px; margin-bottom: 19px; background: var(--yellow); border-radius: 4px; transform: rotate(-1deg); }
-.archive-note__spark { font-size: 22px; }
-.archive-note strong { display: block; font: 600 13px var(--display); }
-.archive-note p { margin: 5px 0 0; color: #66552d; font-size: 11px; line-height: 1.45; }
 .settings-button { width: 100%; font-size: 12px; }
 
 .main { width: calc(100% - 250px); margin-left: 250px; padding: 0 6vw 80px; }
@@ -410,9 +406,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .label-item { font-family: var(--mono); border-radius: 0; }
 .label-dot { background: var(--rule); }
 .label-count { font-family: var(--mono); }
-.archive-note { background: var(--tint); transform: none; border-radius: 0; }
-.archive-note strong { font-family: var(--display); }
-.archive-note p { color: var(--badge-ink); }
 
 /* topbar + search */
 .search-box { background: var(--white); border: 1px solid var(--rule); border-radius: 0; box-shadow: none; }
