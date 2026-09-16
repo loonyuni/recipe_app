@@ -882,6 +882,20 @@ async function fetchPublicRecipeBySlug(slug) {
   return mapPublicRow(data);
 }
 
+// Cache the public library in localStorage for instant repeat loads
+// (stale-while-revalidate): paint the cached list immediately, then refresh
+// from Supabase in the background. Sidesteps the free-tier cold-start wait.
+const PUBLIC_CACHE_KEY = "kitchen-archive-public";
+function loadCachedPublic() {
+  try {
+    const value = JSON.parse(localStorage.getItem(PUBLIC_CACHE_KEY) || "null");
+    return Array.isArray(value) ? value : null;
+  } catch { return null; }
+}
+function saveCachedPublic(list) {
+  try { localStorage.setItem(PUBLIC_CACHE_KEY, JSON.stringify(list)); } catch { /* quota */ }
+}
+
 // Signed-out landing: show the public gallery (falling back to the seed recipes
 // if nothing is shared yet or the fetch fails), then open a deep-linked recipe.
 async function enterPublicMode() {
@@ -889,14 +903,26 @@ async function enterPublicMode() {
   cloud.householdId = null;
   cloud.memberId = null;
   cloud.members = [];
+  // 1. Instant paint from cache (no spinner) if we have a prior snapshot.
+  const cached = loadCachedPublic();
+  if (cached && cached.length) {
+    state.recipes = cached;
+    state.booting = false;
+    render();
+    await openInitialSharedRecipe();
+  }
+  // 2. Revalidate from the network and update in place.
   const publicRecipes = await loadPublicRecipes();
-  state.recipes = publicRecipes.length
-    ? publicRecipes
-    : starterRecipes.map((recipe) => ({ ...recipe }));
+  if (publicRecipes.length) {
+    state.recipes = publicRecipes;
+    saveCachedPublic(publicRecipes);
+  } else if (!cached || !cached.length) {
+    state.recipes = starterRecipes.map((recipe) => ({ ...recipe }));
+  }
   saveRecipes();
   state.booting = false;
   render();
-  await openInitialSharedRecipe();
+  if (!(cached && cached.length)) await openInitialSharedRecipe();
 }
 
 // Open the ?recipe=<slug> target on load. Resolves from the already-loaded set
@@ -1403,7 +1429,7 @@ function renderRecipes() {
       <div class="recipe-card__body">
         <h3>${esc(recipe.title)}</h3>
         <p>${esc(recipe.description)}</p>
-        <div class="card-meta"><span>◷ ${esc(formatTimeLabel(recipe.time))}</span><span>♧ ${esc(recipe.servings)} servings</span>${recipe.cookCount ? `<span class="card-cook-badge">Made ${esc(recipe.cookCount)}×</span>` : ""}</div>
+        <div class="card-meta"><span><svg class="icon"><use href="#i-clock"/></svg> ${esc(formatTimeLabel(recipe.time))}</span><span>${esc(recipe.servings)} servings</span>${recipe.cookCount ? `<span class="card-cook-badge">Made ${esc(recipe.cookCount)}×</span>` : ""}</div>
         <div class="card-footer">
           <div class="card-tags">${recipe.tags.slice(0, 2).map((tag) => `<span class="card-tag">${esc(tag)}</span>`).join("")}</div>
           <span class="card-rating">★ ${averageRating(recipe).toFixed(1)}</span>
@@ -1794,6 +1820,7 @@ function showRecipe(id, { updateUrl = true } = {}) {
   drawerScale = 1;
   recordRecentView(recipe);
   if (updateUrl && recipe.slug) syncDrawerUrl(recipe.slug);
+  closeMenu();
   render();
   window.scrollTo({ top: 0 });
 }
@@ -1940,7 +1967,7 @@ function renderDetail(recipe) {
       </div>
     ` : ""}
     <div class="drawer-tags">${recipe.tags.map((tag) => `<span class="drawer-tag">${esc(tag)}</span>`).join("")}</div>
-    <div class="card-meta"><span>◷ ${esc(formatTimeLabel(recipe.time))}</span><span>♧ ${esc(recipe.servings)} servings</span><span>★ ${averageRating(recipe).toFixed(1)} household</span></div>
+    <div class="card-meta"><span><svg class="icon"><use href="#i-clock"/></svg> ${esc(formatTimeLabel(recipe.time))}</span><span>${esc(recipe.servings)} servings</span>${recipe.foreign ? "" : `<span>★ ${averageRating(recipe).toFixed(1)} household</span>`}</div>
     <hr class="drawer-rule" />
     <h3 class="drawer-section-title">Nutrition per serving</h3>
     ${hasNutrition(recipe) ? `
@@ -2498,7 +2525,7 @@ document.addEventListener("keydown", (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); $("#search-input").focus(); }
   if (event.key === "Escape") { closeModal(); closeImportModal(); closeAuthModal(); closeLabelManager(); $("#filter-popover").hidden = true; }
 });
-$$(".nav-item").forEach((item) => item.addEventListener("click", () => { state.view = item.dataset.view; render(); }));
+$$(".nav-item").forEach((item) => item.addEventListener("click", () => { state.view = item.dataset.view; state.mode = "list"; state.activeRecipe = null; clearDrawerUrl(); closeMenu(); render(); }));
 $("#recipe-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const data = new FormData(event.target);
@@ -2675,6 +2702,20 @@ $("#otp-verify-button")?.addEventListener("click", async () => {
     button.disabled = false;
   }
 });
+
+// Mobile side-menu (hamburger). Off-canvas sidebar + scrim on small screens.
+function closeMenu() {
+  document.body.classList.remove("menu-open");
+  const scrim = $("#menu-scrim");
+  if (scrim) scrim.hidden = true;
+}
+$("#menu-toggle")?.addEventListener("click", () => {
+  const open = !document.body.classList.contains("menu-open");
+  document.body.classList.toggle("menu-open", open);
+  const scrim = $("#menu-scrim");
+  if (scrim) scrim.hidden = !open;
+});
+$("#menu-scrim")?.addEventListener("click", closeMenu);
 
 // If the cloud is configured, hold the first paint in a loading state until the
 // public/household library resolves, so seed recipes don't flash then reload.

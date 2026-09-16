@@ -3,17 +3,33 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f5f0e7" />
+    <meta name="theme-color" content="#db524d" />
     <title>My Recipes</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <link rel="icon" href="favicon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Recipes" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Manrope:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260915-polish" />
+    <link rel="stylesheet" href="styles.css?v=20260915-editorial" />
   </head>
   <body>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+      <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></symbol>
+      <symbol id="i-flame" viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></symbol>
+      <symbol id="i-hat" viewBox="0 0 24 24"><path d="M17 21a1 1 0 0 0 1-1v-5.35c0-.457.316-.844.727-1.041a4 4 0 0 0-2.134-7.589 5 5 0 0 0-9.186 0 4 4 0 0 0-2.134 7.588c.411.198.727.585.727 1.041V20a1 1 0 0 0 1 1Z"/><path d="M6 17h12"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+    </defs></svg>
+    <div class="menu-scrim" id="menu-scrim" hidden></div>
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
@@ -25,13 +41,13 @@
 
         <nav class="nav" aria-label="Primary navigation">
           <button class="nav-item is-active" data-view="library">
-            <span class="nav-icon">⌂</span> Library
+            <svg class="nav-icon icon"><use href="#i-book"/></svg> Library
           </button>
           <button class="nav-item" data-view="recent">
-            <span class="nav-icon">◷</span> Recently cooked
+            <svg class="nav-icon icon"><use href="#i-flame"/></svg> Recently cooked
           </button>
           <button class="nav-item" data-view="pastry">
-            <span class="nav-icon">❦</span> Pastry school
+            <svg class="nav-icon icon"><use href="#i-hat"/></svg> Pastry school
           </button>
         </nav>
 
@@ -65,6 +81,7 @@
 
       <main class="main">
         <header class="topbar">
+          <button class="menu-toggle" id="menu-toggle" aria-label="Open menu"><svg class="icon"><use href="#i-menu"/></svg></button>
           <div class="mobile-brand">
             <span>My Recipes</span>
           </div>
@@ -357,6 +374,6 @@
     <div id="toast" class="toast" role="status"></div>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="supabase-config.js"></script>
-  <script src="app.js?v=20260915-polish"></script>
+  <script src="app.js?v=20260915-editorial"></script>
   </body>
 </html>
