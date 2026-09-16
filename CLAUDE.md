@@ -5,8 +5,15 @@ share recipes. Public homepage (no login to browse); editing is owner-only.
 
 ## Architecture (static-first, no build step)
 
-- **Frontend:** `index.html` + `styles.css` + `app.js`. Plain HTML/CSS/vanilla JS,
-  no bundler, no framework. `app.js` runs directly in the browser.
+- **Reporting name:** refer to this project as **"indexer"** in reports/summaries
+  (the GitHub repo `recipe_app` and live URL are unchanged).
+- **Frontend:** `index.html` + `styles.css` + `src/helpers.js`, `src/data.js`,
+  `src/ui.js` (loaded in that order as classic scripts sharing one global scope;
+  concatenation = the old single `app.js`). Plain HTML/CSS/vanilla JS, no bundler.
+  - `helpers.js`: config, state, DOM helpers, formatting/scaling/sections.
+  - `data.js`: Supabase load/save/sync, ratings, cook counts, storage, public
+    library + cache/snapshot, auth session + modal, init.
+  - `ui.js`: rendering (grid + detail), import flow, auth UI, event wiring + boot.
 - **Data/auth:** Supabase (Postgres + Auth + Storage + an Edge Function). The
   browser talks to Supabase with the **publishable anon key** in
   `supabase-config.js` (safe to expose; Row Level Security is the real gate).

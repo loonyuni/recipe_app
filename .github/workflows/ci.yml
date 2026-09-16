@@ -14,6 +14,9 @@ jobs:
         with:
           node-version: 20
       - name: Syntax check
-        run: node --check app.js
+        run: |
+          node --check src/helpers.js
+          node --check src/data.js
+          node --check src/ui.js
       - name: Smoke test (stub-DOM load + main paths)
-        run: node scripts/smoke.js app.js
+        run: node scripts/smoke.js
