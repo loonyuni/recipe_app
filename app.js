@@ -1754,6 +1754,24 @@ async function copyShareLink(recipe) {
   showToast(copied ? "Link copied to clipboard." : shareLinkFor(recipe));
 }
 
+// Share a recipe's permalink: native share sheet on mobile (AirDrop, Messages,
+// etc.), copy-to-clipboard fallback on desktop / where Web Share is missing.
+async function shareRecipeNative(recipe) {
+  if (!recipe.slug) { showToast("This recipe doesn't have a link yet."); return; }
+  const url = shareLinkFor(recipe);
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: recipe.title, text: recipe.title, url });
+      return;
+    } catch (error) {
+      if (error && error.name === "AbortError") return; // user dismissed the sheet
+      // otherwise fall through to copy
+    }
+  }
+  const copied = await copyToClipboard(url);
+  showToast(copied ? "Link copied to clipboard." : url);
+}
+
 // Toggle a recipe's visibility on the public homepage (owner only). is_hidden
 // is a plain column update under the existing recipes RLS (household members).
 async function setRecipeHidden(recipe, hidden) {
@@ -1967,15 +1985,17 @@ function renderDetail(recipe) {
     <p class="eyebrow">Recipe archive · ${esc(recipe.source || "Personal recipe")}</p>
     <h2 class="drawer-title" id="drawer-title">${esc(recipe.title)}</h2>
     <p class="drawer-description">${esc(recipe.description)}</p>
-    ${editable ? `
     <div class="drawer-actions">
+      ${recipe.slug ? `<button class="primary-button" id="share-recipe-button"><svg class="icon"><use href="#i-share"/></svg> Share</button>` : ""}
+      ${editable ? `
       <button class="ghost-button" id="edit-recipe-button">Edit recipe</button>
       <button class="danger-button" id="delete-recipe-button">Delete</button>
-      <button class="ghost-button" id="copy-link-button">Copy link</button>
       <button class="ghost-button" id="hide-toggle-button">${recipe.isHidden ? "Make public" : "Hide from public"}</button>
+      ` : ""}
     </div>
-    <p class="share-hint">${recipe.isHidden ? "Hidden · only you can see this" : "Public · anyone with the link can view"}</p>
-    ` : `<p class="share-hint">Viewing a shared recipe (read-only).</p>`}
+    ${editable
+      ? `<p class="share-hint">${recipe.isHidden ? "Hidden · only you can see this" : "Public · anyone with the link can view"}</p>`
+      : `<p class="share-hint">Viewing a shared recipe (read-only).</p>`}
     <div class="cook-tracker">
       ${editable ? `<button type="button" class="primary-button cook-button" id="made-this-button">✓ Made this</button>` : ""}
       <span class="cook-count" id="cook-count-label">${cookCountLabel(recipe)}</span>
@@ -2017,7 +2037,7 @@ function renderDetail(recipe) {
   // Edit/delete/share controls only render for recipes the viewer owns.
   $("#edit-recipe-button")?.addEventListener("click", () => openEditModal(recipe));
   $("#delete-recipe-button")?.addEventListener("click", () => deleteRecipe(recipe));
-  $("#copy-link-button")?.addEventListener("click", () => copyShareLink(recipe));
+  $("#share-recipe-button")?.addEventListener("click", () => shareRecipeNative(recipe));
   $("#hide-toggle-button")?.addEventListener("click", () => setRecipeHidden(recipe, !recipe.isHidden));
   $("#estimate-nutrition-button")?.addEventListener("click", () => estimateNutrition(recipe));
 
