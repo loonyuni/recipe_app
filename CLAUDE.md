@@ -48,7 +48,7 @@ RLS-gated by household membership (`is_household_member`). Key tables: `recipes`
 
 ### Applying SQL / DB ops
 
-SQL migrations are loose `supabase-*.sql` files at root. Apply via the Supabase
+SQL migrations are numbered in `supabase/migrations/` (see its README). Apply via the Supabase
 **Management API** SQL endpoint (`POST /v1/projects/<ref>/database/query`), auth
 with the CLI token in the macOS keychain (`security find-generic-password -s "Supabase CLI" -a supabase -w`).
 Use `curl` (not urllib). Project ref `axajsafyosisflrjqpya`. `created_by` =

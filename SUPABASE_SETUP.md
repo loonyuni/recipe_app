@@ -8,11 +8,15 @@ Create a Supabase project and keep the database password somewhere safe. The fre
 
 ## 2. Run the schema
 
-Open **SQL Editor**, create a new query, paste in [`supabase-schema.sql`](./supabase-schema.sql), and run it. Then run [`supabase-onboarding.sql`](./supabase-onboarding.sql) in a second query.
+Migrations live in [`supabase/migrations/`](./supabase/migrations/), numbered in
+apply order. Run them in sequence in the SQL Editor (or via the Management API,
+see `CLAUDE.md`): `0001_schema` → `0002_onboarding` → `0003_permissions_fix` →
+`0004_images` → `0005_sections` → `0006_public_sharing` → `0007_open_browsing`
+→ `0008_backfill_images`.
 
-If the app reports `permission denied for table household_members`, run [`supabase-permissions-fix.sql`](./supabase-permissions-fix.sql) as a third query.
-
-To enable public recipe sharing / permalinks, run [`supabase-public-sharing.sql`](./supabase-public-sharing.sql). It adds `is_public` + `slug` columns, a `public_recipes` read-only view (the only thing `anon` can read: public rows, safe columns), and the `publish_recipe(uuid, boolean)` RPC used by the drawer's Share toggle.
+`0006_public_sharing` adds `is_public` + `slug` + the `public_recipes` view +
+`publish_recipe`; `0007_open_browsing` adds the open homepage flag, `cook_log`,
+and browsing signals.
 
 ## 3. Create the browser config
 
