@@ -178,6 +178,12 @@ function filteredRecipes() {
   if (state.sort === "title") recipes.sort((a, b) => a.title.localeCompare(b.title));
   if (state.sort === "time") recipes.sort((a, b) => timeMinutes(a.time) - timeMinutes(b.time));
   if (state.sort === "recent") recipes.sort((a, b) => b.added - a.added);
+  if (state.sort === "viewed") {
+    // Recipes you've opened float to the top by last-viewed time; ones you
+    // haven't opened fall back to date-added order (same as "Recently added").
+    const viewedAt = new Map(recentViews().map((entry) => [entry.id, entry.ts]));
+    recipes.sort((a, b) => (viewedAt.get(b.id) || 0) - (viewedAt.get(a.id) || 0) || b.added - a.added);
+  }
   // The Recently cooked tab is intrinsically ordered by last cooked, regardless
   // of the sort dropdown.
   if (state.view === "recent") recipes.sort((a, b) => new Date(b.lastCookedAt || 0) - new Date(a.lastCookedAt || 0));
@@ -624,14 +630,16 @@ function recentViews() {
 }
 function recordRecentView(recipe) {
   const entry = { id: recipe.id, slug: recipe.slug || null, title: recipe.title, ts: Date.now() };
-  const list = [entry, ...recentViews().filter((item) => item.id !== recipe.id)].slice(0, 5);
+  // Keep a deeper history than we show as chips so the "Recently viewed" sort
+  // stays useful past the first few; renderRecentlyViewed trims to 5 for display.
+  const list = [entry, ...recentViews().filter((item) => item.id !== recipe.id)].slice(0, 30);
   localStorage.setItem(RECENT_VIEWS_KEY, JSON.stringify(list));
 }
 function renderRecentlyViewed() {
   const section = $("#recently-viewed-section");
   const listEl = $("#recently-viewed-list");
   if (!section || !listEl) return;
-  const items = recentViews().filter((entry) => state.recipes.some((recipe) => recipe.id === entry.id));
+  const items = recentViews().filter((entry) => state.recipes.some((recipe) => recipe.id === entry.id)).slice(0, 5);
   section.hidden = items.length === 0;
   listEl.innerHTML = items.map((entry) => `<button class="label-item recent-item" data-recent-id="${escAttr(entry.id)}">${esc(entry.title)}</button>`).join("");
   $$("[data-recent-id]", listEl).forEach((button) => button.addEventListener("click", () => showRecipe(button.dataset.recentId)));
@@ -1329,6 +1337,9 @@ function openFilterPopover() {
 }
 
 $("#search-input").addEventListener("input", (event) => { state.search = event.target.value; renderRecipes(); });
+// Results filter live, so the mobile keyboard's Search key just dismisses the
+// keyboard to reveal them (blur). enterkeyhint="search" labels that key.
+$("#search-input").addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); event.target.blur(); } });
 $("#sort-select").addEventListener("change", (event) => { state.sort = event.target.value; renderRecipes(); });
 $("#min-rating-select")?.addEventListener("change", (event) => { state.minRating = Number(event.target.value) || 0; renderRecipes(); });
 $("#filter-button").addEventListener("click", openFilterPopover);
