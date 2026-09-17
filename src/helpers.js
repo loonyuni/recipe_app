@@ -141,7 +141,7 @@ const state = {
   recipes: seededRecipes,
   selectedTags: [],
   search: "",
-  sort: "recent",
+  sort: "viewed",
   view: "library",
   mode: "list", // "list" (grid) or "detail" (single recipe takes over the main column)
   booting: false, // true until the first cloud/public load resolves (avoids a seed-recipe flash)
