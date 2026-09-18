@@ -439,7 +439,7 @@ h1 em { color: var(--red); font-weight: 700; font-style: normal; }
 .recipe-card { background: transparent; border: 0; border-radius: 0; min-height: 0; overflow: visible; transition: none; }
 .recipe-card:hover { transform: none; box-shadow: none; }
 /* Magazine-overlay cards: title sits on the photo behind a bottom gradient. */
-.recipe-card__image { height: auto; aspect-ratio: 4 / 3; padding: 0; border-radius: 10px; overflow: hidden; position: relative; background: var(--tint); }
+.recipe-card__image { height: auto; aspect-ratio: 4 / 3; padding: 0; border-radius: 0; overflow: hidden; position: relative; background: var(--tint); }
 .recipe-card__image img { transition: transform .45s ease; }
 .recipe-card:hover .recipe-card__image img { transform: scale(1.05); }
 .recipe-card__image::after { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, rgba(20,21,24,0) 42%, rgba(20,21,24,.76)); }
