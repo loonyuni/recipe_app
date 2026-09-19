@@ -102,6 +102,8 @@ async function loadCloudRecipesInner() {
   state.recipes = (data || []).map(recipeFromRow);
   cloud.connected = true;
 
+  try { await loadPlanData(); } catch (e) { console.error("loadPlanData failed", e); }
+
   for (const localRecipe of localCodexRecipes) {
     const duplicate = state.recipes.find((recipe) => normalizeRecipeTitle(recipe.title) === normalizeRecipeTitle(localRecipe.title));
     if (duplicate) continue;
@@ -211,6 +213,137 @@ async function loadCloudRecipesInner() {
   state.booting = false;
   render();
   await openInitialSharedRecipe();
+}
+
+// --- Meal planning / grocery list --------------------------------------------
+// Loads the three plan tables for the household and seeds pantry staples the
+// first time a household has none (see DEFAULT_STAPLES in helpers.js).
+
+async function loadPlanData() {
+  if (!cloud.client || !cloud.householdId) return;
+  const [{ data: meals }, { data: groceries }, { data: staples }] = await Promise.all([
+    cloud.client.from("planned_meals").select("*").eq("household_id", cloud.householdId).order("sort_order"),
+    cloud.client.from("grocery_items").select("*").eq("household_id", cloud.householdId).order("sort_order"),
+    cloud.client.from("pantry_staples").select("name").eq("household_id", cloud.householdId).order("name")
+  ]);
+  state.plannedMeals = (meals || []).map((r) => ({ id: r.id, recipeId: r.recipe_id, day: r.day, sortOrder: r.sort_order, made: r.made }));
+  state.grocery = (groceries || []).map((r) => ({ id: r.id, itemKey: r.item_key, display: r.display, status: r.status, manual: r.manual, sortOrder: r.sort_order }));
+  state.staples = (staples || []).map((r) => r.name);
+  if (!state.staples.length) {
+    await seedStaples();
+  }
+}
+
+async function seedStaples() {
+  const rows = DEFAULT_STAPLES.map((name) => ({ household_id: cloud.householdId, name }));
+  const { error } = await cloud.client.from("pantry_staples").insert(rows);
+  if (!error) state.staples = [...DEFAULT_STAPLES];
+}
+
+async function addPlannedMeal(recipeId) {
+  if (!cloud.connected || !cloud.client || !cloud.householdId) return;
+  const sortOrder = state.plannedMeals.reduce((m, x) => Math.max(m, x.sortOrder), 0) + 1;
+  const { data, error } = await cloud.client.from("planned_meals").insert({
+    household_id: cloud.householdId, recipe_id: recipeId, sort_order: sortOrder, created_by: cloud.session?.user?.id || null
+  }).select().single();
+  if (error) throw error;
+  state.plannedMeals.push({ id: data.id, recipeId, day: null, sortOrder, made: false });
+}
+
+async function removePlannedMeal(id) {
+  if (!cloud.connected || !cloud.client || !cloud.householdId) return;
+  const { error } = await cloud.client.from("planned_meals").delete().eq("id", id).eq("household_id", cloud.householdId);
+  if (error) throw error;
+  state.plannedMeals = state.plannedMeals.filter((m) => m.id !== id);
+}
+
+async function updatePlannedMeal(id, patch) {
+  if (!cloud.connected || !cloud.client || !cloud.householdId) return;
+  const dbPatch = {};
+  if ("day" in patch) dbPatch.day = patch.day;
+  if ("made" in patch) dbPatch.made = patch.made;
+  if ("sortOrder" in patch) dbPatch.sort_order = patch.sortOrder;
+  const { error } = await cloud.client.from("planned_meals").update(dbPatch).eq("id", id).eq("household_id", cloud.householdId);
+  if (error) throw error;
+  const meal = state.plannedMeals.find((m) => m.id === id);
+  if (meal) Object.assign(meal, patch);
+}
+
+async function clearMadeMeals() {
+  if (!cloud.connected || !cloud.client || !cloud.householdId) return;
+  const { error } = await cloud.client.from("planned_meals").delete().eq("household_id", cloud.householdId).eq("made", true);
+  if (error) throw error;
+  state.plannedMeals = state.plannedMeals.filter((m) => !m.made);
+}
+
+// Replace the persisted grocery list to match a merged in-memory list. Deletes
+// removed keys, upserts the rest. `merged` items are { item_key, display, status, manual }.
+async function replaceGrocery(merged) {
+  if (!cloud.connected || !cloud.client || !cloud.householdId) return;
+  const keep = new Set(merged.map((m) => m.item_key));
+  const toDelete = state.grocery.filter((g) => !keep.has(g.itemKey)).map((g) => g.id);
+  if (toDelete.length) {
+    const { error } = await cloud.client.from("grocery_items").delete().in("id", toDelete);
+    if (error) throw error;
+  }
+  const rows = merged.map((m, i) => ({
+    household_id: cloud.householdId, item_key: m.item_key, display: m.display,
+    status: m.status, manual: m.manual, sort_order: i, updated_at: new Date().toISOString()
+  }));
+  if (!rows.length) { state.grocery = []; return; }
+  const { data, error } = await cloud.client.from("grocery_items")
+    .upsert(rows, { onConflict: "household_id,item_key" }).select();
+  if (error) throw error;
+  state.grocery = (data || []).map((r) => ({ id: r.id, itemKey: r.item_key, display: r.display, status: r.status, manual: r.manual, sortOrder: r.sort_order }));
+}
+
+async function addGroceryItem(display) {
+  if (!cloud.connected || !cloud.client || !cloud.householdId) return;
+  const itemKey = `manual:${display.toLowerCase().trim()}`;
+  const sortOrder = state.grocery.reduce((m, x) => Math.max(m, x.sortOrder), 0) + 1;
+  const { data, error } = await cloud.client.from("grocery_items").insert({
+    household_id: cloud.householdId, item_key: itemKey, display: display.trim(), status: "need", manual: true, sort_order: sortOrder
+  }).select().single();
+  if (error) throw error;
+  state.grocery.push({ id: data.id, itemKey, display: display.trim(), status: "need", manual: true, sortOrder });
+}
+
+async function setGroceryStatus(id, status) {
+  if (!cloud.connected || !cloud.client || !cloud.householdId) return;
+  const { error } = await cloud.client.from("grocery_items").update({ status, updated_at: new Date().toISOString() }).eq("id", id).eq("household_id", cloud.householdId);
+  if (error) throw error;
+  const item = state.grocery.find((g) => g.id === id);
+  if (item) item.status = status;
+}
+
+async function clearGrocery(predicate) {
+  if (!cloud.connected || !cloud.client || !cloud.householdId) return;
+  const ids = state.grocery.filter(predicate).map((g) => g.id);
+  if (!ids.length) return;
+  const { error } = await cloud.client.from("grocery_items").delete().in("id", ids);
+  if (error) throw error;
+  state.grocery = state.grocery.filter((g) => !ids.includes(g.id));
+}
+
+async function addStaple(name) {
+  if (!cloud.connected || !cloud.client || !cloud.householdId) return;
+  const clean = name.toLowerCase().trim();
+  if (!clean || state.staples.includes(clean)) return;
+  const { error } = await cloud.client.from("pantry_staples").insert({ household_id: cloud.householdId, name: clean });
+  if (error) throw error;
+  state.staples.push(clean);
+}
+
+async function removeStaple(name) {
+  if (!cloud.connected || !cloud.client || !cloud.householdId) return;
+  const { error } = await cloud.client.from("pantry_staples").delete().eq("household_id", cloud.householdId).eq("name", name);
+  if (error) throw error;
+  state.staples = state.staples.filter((s) => s !== name);
+}
+
+async function startNewWeek() {
+  await clearMadeMeals();
+  await clearGrocery((g) => g.status === "got");
 }
 
 // --- Public sharing / permalinks --------------------------------------------

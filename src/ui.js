@@ -205,6 +205,7 @@ function renderRecipes() {
       <div class="recipe-card__body">
         <p>${esc(recipe.description)}</p>
         <div class="card-meta"><span><svg class="icon"><use href="#i-clock"/></svg> ${esc(formatTimeLabel(recipe.time))}</span><span>${esc(recipe.servings)} servings</span>${recipe.cookCount ? `<span class="card-cook-badge">Made ${esc(recipe.cookCount)}×</span>` : ""}</div>
+        ${canEditRecipe(recipe) ? `<button class="card-plan" data-plan-id="${escAttr(recipe.id)}" aria-label="Add to this week" title="Add to this week">＋ Plan</button>` : ""}
         <div class="card-footer">
           <div class="card-tags">${recipe.tags.slice(0, 2).map((tag) => `<span class="card-tag">${esc(tag)}</span>`).join("")}</div>
           <span class="card-rating">★ ${averageRating(recipe).toFixed(1)}</span>
@@ -216,6 +217,15 @@ function renderRecipes() {
     card.addEventListener("click", () => showRecipe(card.dataset.id));
     card.addEventListener("keydown", (event) => { if (event.key === "Enter") showRecipe(card.dataset.id); });
   });
+  $$(".card-plan").forEach((btn) => btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const id = btn.dataset.planId;
+    if (state.plannedMeals.some((m) => m.recipeId === id && !m.made)) { showToast("Already on this week's plan."); return; }
+    runPlanAction(async () => {
+      await addPlannedMeal(id);
+      showToast("Added to this week.");
+    });
+  }));
 }
 
 function renderFilters() {
@@ -234,6 +244,154 @@ function updateReadOnlyChrome() {
   if (newButton) newButton.hidden = readOnly;
   const emptyButton = $("#empty-new-button");
   if (emptyButton) emptyButton.hidden = readOnly;
+  // Meal planning is a household feature (spec §F): hide the nav entry
+  // entirely for signed-out visitors rather than showing an empty plan.
+  const planNav = $(".nav-item[data-view='plan']");
+  if (planNav) planNav.hidden = !cloud.connected;
+}
+
+const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+// Run a plan/grocery mutation (add/update/remove against Supabase) and surface
+// any failure as a toast instead of letting it become a silent unhandled
+// rejection. The caller's re-render, if any, belongs inside `fn` so it only
+// runs after a successful await.
+async function runPlanAction(fn) {
+  try { await fn(); }
+  catch (e) { console.error(e); showToast("Something went wrong. Please try again."); }
+}
+
+// Render the "This week" meal list: unmade meals first (by sort order), made
+// meals sink to the bottom. Each row lets you jump to the recipe, set a day,
+// mark it made, or remove it from the plan.
+function renderPlan() {
+  const listEl = $("#planned-list");
+  if (!listEl) return;
+  const byId = new Map(state.recipes.map((r) => [r.id, r]));
+  const meals = [...state.plannedMeals]
+    .sort((a, b) => (a.made === b.made ? a.sortOrder - b.sortOrder : a.made ? 1 : -1));
+  if (!meals.length) {
+    listEl.innerHTML = `<p class="loading-note">No meals planned yet. Use “Add meal”, or “Add to this week” on any recipe.</p>`;
+    return;
+  }
+  listEl.innerHTML = meals.map((m) => {
+    const recipe = byId.get(m.recipeId);
+    const title = recipe ? esc(recipe.title) : "(recipe removed)";
+    return `<div class="planned-row${m.made ? " is-made" : ""}" data-meal-id="${escAttr(m.id)}">
+      <input type="checkbox" class="planned-made" ${m.made ? "checked" : ""} aria-label="Mark made" />
+      <button class="planned-title" data-recipe-id="${escAttr(m.recipeId)}">${title}</button>
+      <select class="planned-day" aria-label="Day">
+        <option value=""${m.day == null ? " selected" : ""}>none</option>
+        ${DAY_LABELS.map((d, i) => `<option value="${i}"${m.day === i ? " selected" : ""}>${d}</option>`).join("")}
+      </select>
+      <button class="planned-remove" aria-label="Remove">×</button>
+    </div>`;
+  }).join("");
+  $$(".planned-row", listEl).forEach((row) => {
+    const id = row.dataset.mealId;
+    row.querySelector(".planned-made").addEventListener("change", (e) => runPlanAction(async () => { await updatePlannedMeal(id, { made: e.target.checked }); renderPlan(); }));
+    row.querySelector(".planned-title").addEventListener("click", (e) => showRecipe(e.target.dataset.recipeId));
+    row.querySelector(".planned-day").addEventListener("change", (e) => runPlanAction(async () => { await updatePlannedMeal(id, { day: e.target.value === "" ? null : Number(e.target.value) }); }));
+    row.querySelector(".planned-remove").addEventListener("click", () => runPlanAction(async () => { await removePlannedMeal(id); renderPlan(); }));
+  });
+}
+
+// --- Add-meal modal: search + multi-select onto this week's plan -----------
+let addMealSelection = new Set();
+
+function openAddMealModal() {
+  addMealSelection = new Set();
+  $("#add-meal-search").value = "";
+  $("#add-meal-confirm").textContent = "Add 0 meals";
+  renderAddMealResults("");
+  $("#add-meal-modal").hidden = false;
+  $("#add-meal-search").focus();
+}
+function closeAddMealModal() { $("#add-meal-modal").hidden = true; }
+
+function renderAddMealResults(query) {
+  const q = query.trim().toLowerCase();
+  const results = state.recipes
+    .filter((r) => !q || r.title.toLowerCase().includes(q))
+    .slice(0, 50);
+  const listEl = $("#add-meal-results");
+  listEl.innerHTML = results.map((r) => `
+    <button class="add-meal-item${addMealSelection.has(r.id) ? " is-selected" : ""}" data-recipe-id="${escAttr(r.id)}">
+      ${addMealSelection.has(r.id) ? "▣" : "▢"} ${esc(r.title)}
+      <span class="add-meal-time">${esc(formatTimeLabel(r.time))}</span>
+    </button>`).join("") || `<p class="loading-note">No matches.</p>`;
+  $$(".add-meal-item", listEl).forEach((btn) => btn.addEventListener("click", () => {
+    const id = btn.dataset.recipeId;
+    if (addMealSelection.has(id)) addMealSelection.delete(id); else addMealSelection.add(id);
+    renderAddMealResults($("#add-meal-search").value);
+    $("#add-meal-confirm").textContent = `Add ${addMealSelection.size} meal${addMealSelection.size === 1 ? "" : "s"}`;
+  }));
+}
+
+// --- Grocery list: generate from this week's unmade meals + pantry staples --
+
+// Aggregate ingredients across every unmade planned meal, fold in pantry
+// staples (marked "have" rather than dropped), and merge onto the living
+// grocery list so existing got/have statuses and manual items survive.
+async function generateGrocery() {
+  const byId = new Map(state.recipes.map((r) => [r.id, r]));
+  const recipes = state.plannedMeals
+    .filter((m) => !m.made)
+    .map((m) => byId.get(m.recipeId))
+    .filter(Boolean);
+  const aggregated = aggregateGroceries(recipes);
+  const stapleKeys = new Set(state.staples.map((s) => normalizeIngredientName(s)));
+  const existing = state.grocery.map((g) => ({ item_key: g.itemKey, display: g.display, status: g.status, manual: g.manual }));
+  const merged = mergeGrocery(existing, aggregated, stapleKeys);
+  await replaceGrocery(merged);
+  renderGroceries();
+  state.planPane = "groceries";
+  $("#plan-pane").hidden = true; $("#grocery-pane").hidden = false;
+  $$("#plan-toggle .plan-toggle-btn").forEach((b) => b.classList.toggle("is-active", b.dataset.pane === "groceries"));
+}
+
+// Render the grocery list, grouped by status: Need (to buy), Got (checked off
+// this trip), Have / skipping (pantry staples or manually marked "have").
+function renderGroceries() {
+  const listEl = $("#grocery-list");
+  if (!listEl) return;
+  const groups = { need: [], got: [], have: [] };
+  state.grocery.forEach((g) => (groups[g.status] || groups.need).push(g));
+  const section = (title, items, opts = {}) => items.length ? `
+    <div class="grocery-group grocery-${opts.cls || title.toLowerCase()}">
+      <div class="grocery-group-head">${esc(title)}${opts.count ? ` (${items.length})` : ""}</div>
+      ${items.map((g) => `
+        <div class="grocery-row status-${g.status}" data-grocery-id="${escAttr(g.id)}">
+          <input type="checkbox" class="grocery-check" ${g.status === "got" ? "checked" : ""} aria-label="Got it" />
+          <span class="grocery-label">${esc(g.display)}${g.manual ? ` <span class="grocery-manual">(added by you)</span>` : ""}</span>
+          <button class="grocery-have" title="I have this">have</button>
+          <button class="grocery-remove" aria-label="Remove">×</button>
+        </div>`).join("")}
+    </div>` : "";
+  const html = section("Need", groups.need) + section("Got", groups.got) + section("Have / skipping", groups.have, { count: true, cls: "have" });
+  listEl.innerHTML = html || `<p class="loading-note">Nothing to buy: generate from this week's meals, or all planned meals are made.</p>`;
+  $$(".grocery-row", listEl).forEach((row) => {
+    const id = row.dataset.groceryId;
+    row.querySelector(".grocery-check").addEventListener("change", (e) => runPlanAction(async () => { await setGroceryStatus(id, e.target.checked ? "got" : "need"); renderGroceries(); }));
+    row.querySelector(".grocery-have").addEventListener("click", () => runPlanAction(async () => { await setGroceryStatus(id, "have"); renderGroceries(); }));
+    row.querySelector(".grocery-remove").addEventListener("click", () => runPlanAction(async () => { await clearGrocery((g) => g.id === id); renderGroceries(); }));
+  });
+}
+
+// --- Pantry staples editor (mirrors the label manager) ----------------------
+function openStaples() { renderStaples(); $("#staples-modal").hidden = false; }
+function closeStaples() { $("#staples-modal").hidden = true; }
+function renderStaples() {
+  const listEl = $("#staples-list");
+  if (!listEl) return;
+  listEl.innerHTML = state.staples.length
+    ? state.staples.map((name) => `
+      <div class="staples-row" data-staple="${escAttr(name)}">
+        <span>${esc(name)}</span>
+        <button type="button" class="danger-button staples-remove" data-remove="${escAttr(name)}">Remove</button>
+      </div>`).join("")
+    : `<p class="loading-note">No staples yet.</p>`;
+  $$(".staples-remove", listEl).forEach((btn) => btn.addEventListener("click", () => runPlanAction(async () => { await removeStaple(btn.dataset.remove); renderStaples(); })));
 }
 
 function render() {
@@ -242,15 +400,26 @@ function render() {
   updateReadOnlyChrome();
   renderRecentlyViewed();
   const detail = state.mode === "detail" && state.activeRecipe;
-  $("#list-view").hidden = detail;
+  // The "This week" plan is household-only (spec §F): a signed-out visitor
+  // never has a household, so stale/shared state pointing at it falls back to
+  // the library view instead of showing an empty plan pane.
+  if (state.view === "plan" && !cloud.connected) state.view = "library";
+  const planView = !detail && state.view === "plan";
   $("#detail-view").hidden = !detail;
+  $("#plan-view").hidden = !planView;
+  $("#list-view").hidden = detail || planView;
   if (detail) {
     renderDetail(state.activeRecipe);
     return;
   }
+  $$(".nav-item").forEach((item) => item.classList.toggle("is-active", item.dataset.view === state.view));
+  if (planView) {
+    renderPlan();
+    renderGroceries();
+    return;
+  }
   const titles = { library: "All recipes", recent: "Recently cooked", pastry: "Pastry school" };
   $("#view-title").firstChild.textContent = (titles[state.view] || "All recipes") + " ";
-  $$(".nav-item").forEach((item) => item.classList.toggle("is-active", item.dataset.view === state.view));
   // First paint while the cloud/public library loads: show a loading note instead
   // of the seed recipes, so returning visitors don't see a flash-then-reload.
   if (state.booting) {
@@ -832,6 +1001,7 @@ function renderDetail(recipe) {
       : `<p class="share-hint">Viewing a shared recipe (read-only).</p>`}
     <div class="cook-tracker">
       ${editable ? `<button type="button" class="primary-button cook-button" id="made-this-button">✓ Made this</button>` : ""}
+      ${editable ? `<button type="button" class="ghost-button" id="add-to-plan-button">＋ Add to this week</button>` : ""}
       <span class="cook-count" id="cook-count-label">${cookCountLabel(recipe)}</span>
     </div>
     ${recipeImageUrls(recipe).length ? `
@@ -871,6 +1041,13 @@ function renderDetail(recipe) {
   $("#breadcrumb-home").addEventListener("click", showList);
   $$("#detail-view [data-related-id]").forEach((el) => el.addEventListener("click", () => showRecipe(el.dataset.relatedId)));
   $("#made-this-button")?.addEventListener("click", () => logCook(recipe));
+  $("#add-to-plan-button")?.addEventListener("click", () => {
+    if (state.plannedMeals.some((m) => m.recipeId === recipe.id && !m.made)) { showToast("Already on this week's plan."); return; }
+    runPlanAction(async () => {
+      await addPlannedMeal(recipe.id);
+      showToast("Added to this week.");
+    });
+  });
   $("#add-photo-button")?.addEventListener("click", () => $("#photo-input")?.click());
   $("#photo-input")?.addEventListener("change", (event) => {
     const file = event.target.files && event.target.files[0];
@@ -1423,6 +1600,37 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") { closeModal(); closeImportModal(); closeAuthModal(); closeLabelManager(); $("#filter-popover").hidden = true; }
 });
 $$(".nav-item").forEach((item) => item.addEventListener("click", () => { state.view = item.dataset.view; state.mode = "list"; state.activeRecipe = null; clearDrawerUrl(); closeMenu(); render(); }));
+$$("#plan-toggle .plan-toggle-btn").forEach((btn) => btn.addEventListener("click", () => {
+  state.planPane = btn.dataset.pane;
+  $$("#plan-toggle .plan-toggle-btn").forEach((b) => b.classList.toggle("is-active", b === btn));
+  $("#plan-pane").hidden = state.planPane !== "plan";
+  $("#grocery-pane").hidden = state.planPane !== "groceries";
+}));
+$("#clear-made-button")?.addEventListener("click", () => { if (confirm("Clear all meals marked made?")) runPlanAction(async () => { await clearMadeMeals(); renderPlan(); }); });
+$("#start-new-week-button")?.addEventListener("click", () => { if (confirm("Start a new week? This clears made meals and checked-off grocery items.")) runPlanAction(async () => { await startNewWeek(); renderPlan(); renderGroceries(); }); });
+$("#add-meal-button")?.addEventListener("click", openAddMealModal);
+$("#add-meal-close")?.addEventListener("click", closeAddMealModal);
+$("#add-meal-modal")?.addEventListener("click", (e) => { if (e.target.id === "add-meal-modal") closeAddMealModal(); });
+$("#add-meal-search")?.addEventListener("input", (e) => renderAddMealResults(e.target.value));
+$("#add-meal-confirm")?.addEventListener("click", () => runPlanAction(async () => {
+  for (const id of addMealSelection) await addPlannedMeal(id);
+  closeAddMealModal();
+  renderPlan();
+  showToast(`Added ${addMealSelection.size} to this week.`);
+}));
+$("#generate-grocery-button")?.addEventListener("click", () => runPlanAction(generateGrocery));
+$("#add-grocery-button")?.addEventListener("click", () => {
+  const label = prompt("Add an item to the grocery list:");
+  if (label && label.trim()) runPlanAction(async () => { await addGroceryItem(label); renderGroceries(); });
+});
+$("#clear-got-button")?.addEventListener("click", () => runPlanAction(async () => { await clearGrocery((g) => g.status === "got"); renderGroceries(); }));
+$("#clear-all-grocery-button")?.addEventListener("click", () => { if (confirm("Clear the whole grocery list?")) runPlanAction(async () => { await clearGrocery(() => true); renderGroceries(); }); });
+$("#staples-button")?.addEventListener("click", openStaples);
+$("#staples-close")?.addEventListener("click", closeStaples);
+$("#staples-done")?.addEventListener("click", closeStaples);
+$("#staples-modal")?.addEventListener("click", (e) => { if (e.target.id === "staples-modal") closeStaples(); });
+$("#staples-add")?.addEventListener("click", () => { const v = $("#staples-input").value; if (v.trim()) runPlanAction(async () => { await addStaple(v); $("#staples-input").value = ""; renderStaples(); }); });
+$("#staples-input")?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("#staples-add").click(); } });
 $("#recipe-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const data = new FormData(event.target);
@@ -1508,7 +1716,17 @@ $("#import-review-form").addEventListener("submit", (event) => {
   applyRecipeSections(recipe, readSectionEditor($("#import-section-editor")));
   closeImportModal();
   state.activeImportDraft = null;
-  persistNewRecipe(recipe);
+  const addToPlan = data.get("addToPlan") === "on";
+  // persistNewRecipe merges onto an existing duplicate (matched by source URL
+  // or title) rather than saving `recipe` itself, in which case `recipe.id`
+  // stays the client-side placeholder, never a real (UUID) row id. Resolve the
+  // duplicate BEFORE persisting so `saved` points at the actual saved row
+  // either way: the pre-existing duplicate, or `recipe` itself when there is
+  // no duplicate (its `.id` is a real UUID once saveRecipeToCloud resolves).
+  const saved = findDuplicateRecipe(recipe) || recipe;
+  persistNewRecipe(recipe).then(async () => {
+    if (addToPlan && saved.id) { await addPlannedMeal(saved.id); showToast("Saved and added to this week."); }
+  }).catch((e) => { console.error(e); showToast("Saved, but could not add to this week."); });
 });
 $("#copy-import-debug").addEventListener("click", async () => {
   const packet = JSON.stringify(state.lastImportDebug || {}, null, 2);
