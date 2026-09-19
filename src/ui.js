@@ -316,6 +316,56 @@ function renderAddMealResults(query) {
   }));
 }
 
+// --- Grocery list: generate from this week's unmade meals + pantry staples --
+
+// Aggregate ingredients across every unmade planned meal, fold in pantry
+// staples (marked "have" rather than dropped), and merge onto the living
+// grocery list so existing got/have statuses and manual items survive.
+async function generateGrocery() {
+  const byId = new Map(state.recipes.map((r) => [r.id, r]));
+  const recipes = state.plannedMeals
+    .filter((m) => !m.made)
+    .map((m) => byId.get(m.recipeId))
+    .filter(Boolean);
+  const aggregated = aggregateGroceries(recipes);
+  const stapleKeys = new Set(state.staples.map((s) => normalizeIngredientName(s)));
+  const existing = state.grocery.map((g) => ({ item_key: g.itemKey, display: g.display, status: g.status, manual: g.manual }));
+  const merged = mergeGrocery(existing, aggregated, stapleKeys);
+  await replaceGrocery(merged);
+  renderGroceries();
+  state.planPane = "groceries";
+  $("#plan-pane").hidden = true; $("#grocery-pane").hidden = false;
+  $$("#plan-toggle .plan-toggle-btn").forEach((b) => b.classList.toggle("is-active", b.dataset.pane === "groceries"));
+}
+
+// Render the grocery list, grouped by status: Need (to buy), Got (checked off
+// this trip), Have / skipping (pantry staples or manually marked "have").
+function renderGroceries() {
+  const listEl = $("#grocery-list");
+  if (!listEl) return;
+  const groups = { need: [], got: [], have: [] };
+  state.grocery.forEach((g) => (groups[g.status] || groups.need).push(g));
+  const section = (title, items, opts = {}) => items.length ? `
+    <div class="grocery-group grocery-${opts.cls || title.toLowerCase()}">
+      <div class="grocery-group-head">${esc(title)}${opts.count ? ` (${items.length})` : ""}</div>
+      ${items.map((g) => `
+        <div class="grocery-row status-${g.status}" data-grocery-id="${escAttr(g.id)}">
+          <input type="checkbox" class="grocery-check" ${g.status === "got" ? "checked" : ""} aria-label="Got it" />
+          <span class="grocery-label">${esc(g.display)}${g.manual ? ` <span class="grocery-manual">(added by you)</span>` : ""}</span>
+          <button class="grocery-have" title="I have this">have</button>
+          <button class="grocery-remove" aria-label="Remove">×</button>
+        </div>`).join("")}
+    </div>` : "";
+  const html = section("Need", groups.need) + section("Got", groups.got) + section("Have / skipping", groups.have, { count: true, cls: "have" });
+  listEl.innerHTML = html || `<p class="loading-note">Nothing to buy: generate from this week's meals, or all planned meals are made.</p>`;
+  $$(".grocery-row", listEl).forEach((row) => {
+    const id = row.dataset.groceryId;
+    row.querySelector(".grocery-check").addEventListener("change", async (e) => { await setGroceryStatus(id, e.target.checked ? "got" : "need"); renderGroceries(); });
+    row.querySelector(".grocery-have").addEventListener("click", async () => { await setGroceryStatus(id, "have"); renderGroceries(); });
+    row.querySelector(".grocery-remove").addEventListener("click", async () => { await clearGrocery((g) => g.id === id); renderGroceries(); });
+  });
+}
+
 function render() {
   renderLabels();
   renderFilters();
@@ -1538,6 +1588,13 @@ $("#add-meal-confirm")?.addEventListener("click", async () => {
   renderPlan();
   showToast(`Added ${addMealSelection.size} to this week.`);
 });
+$("#generate-grocery-button")?.addEventListener("click", generateGrocery);
+$("#add-grocery-button")?.addEventListener("click", async () => {
+  const label = prompt("Add an item to the grocery list:");
+  if (label && label.trim()) { await addGroceryItem(label); renderGroceries(); }
+});
+$("#clear-got-button")?.addEventListener("click", async () => { await clearGrocery((g) => g.status === "got"); renderGroceries(); });
+$("#clear-all-grocery-button")?.addEventListener("click", async () => { if (confirm("Clear the whole grocery list?")) { await clearGrocery(() => true); renderGroceries(); } });
 $("#recipe-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const data = new FormData(event.target);
