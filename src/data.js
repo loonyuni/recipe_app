@@ -463,7 +463,7 @@ async function enterPublicMode() {
 // Open the ?recipe=<slug> target on load. Resolves from the already-loaded set
 // first (own or public), otherwise fetches the single public row by slug.
 async function openInitialSharedRecipe() {
-  if (!initialRecipeSlug) return;
+  if (!initialRecipeSlug) { restoreInitialView(); return; }
   let recipe = state.recipes.find((item) => item.slug === initialRecipeSlug);
   if (!recipe) {
     recipe = await fetchPublicRecipeBySlug(initialRecipeSlug);
