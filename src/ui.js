@@ -291,6 +291,7 @@ let addMealSelection = new Set();
 function openAddMealModal() {
   addMealSelection = new Set();
   $("#add-meal-search").value = "";
+  $("#add-meal-confirm").textContent = "Add 0 meals";
   renderAddMealResults("");
   $("#add-meal-modal").hidden = false;
   $("#add-meal-search").focus();
@@ -1703,8 +1704,15 @@ $("#import-review-form").addEventListener("submit", (event) => {
   closeImportModal();
   state.activeImportDraft = null;
   const addToPlan = data.get("addToPlan") === "on";
+  // persistNewRecipe merges onto an existing duplicate (matched by source URL
+  // or title) rather than saving `recipe` itself, in which case `recipe.id`
+  // stays the client-side placeholder, never a real (UUID) row id. Resolve the
+  // duplicate BEFORE persisting so `saved` points at the actual saved row
+  // either way: the pre-existing duplicate, or `recipe` itself when there is
+  // no duplicate (its `.id` is a real UUID once saveRecipeToCloud resolves).
+  const saved = findDuplicateRecipe(recipe) || recipe;
   persistNewRecipe(recipe).then(async () => {
-    if (addToPlan && recipe.id) { await addPlannedMeal(recipe.id); showToast("Saved and added to this week."); }
+    if (addToPlan && saved.id) { await addPlannedMeal(saved.id); showToast("Saved and added to this week."); }
   });
 });
 $("#copy-import-debug").addEventListener("click", async () => {
