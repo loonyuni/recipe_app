@@ -338,12 +338,34 @@ function renderAddMealResults(query) {
 // Aggregate ingredients across every unmade planned meal, fold in pantry
 // staples (marked "have" rather than dropped), and merge onto the living
 // grocery list so existing got/have statuses and manual items survive.
-// Pick-before-generate: pressing Generate opens a picker of the aggregated
-// ingredients from this week's un-made meals. You tick what you need, and only
-// the picked items become the grocery list. Pantry staples start unchecked
-// (word-level match), and items already on the list stay checked.
-let generateAggregated = [];
+// Pick-before-generate: pressing Generate opens a picker of this week's un-made
+// meals' ingredients, grouped by recipe, likely-non-staples first. You tick what
+// you need; on confirm the picked lines are merged like-for-like onto the living
+// grocery list. Items already on the list start checked, so adding a recipe and
+// regenerating is additive (no re-clicking, nothing wiped). generateSelection
+// holds per-line item ids ("<recipeId>#<index>").
+let generateGroups = [];
 let generateSelection = new Set();
+
+// Build the picker groups: one per un-made recipe, its atomized ingredient
+// lines (headers skipped, deduped within the recipe), sorted so likely staples
+// sink to the bottom. Each item keeps its raw line (to re-aggregate on confirm)
+// and its normalized key (to pre-check against the current list).
+function buildGenerateGroups(recipes, stapleKeys) {
+  return recipes.map((r) => {
+    const seen = new Set();
+    const items = [];
+    normalizeIngredientList(r.ingredients || []).forEach((line, i) => {
+      if (isIngredientHeader(line)) return;
+      const key = ingredientKeyOf(line);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      items.push({ id: `${r.id}#${i}`, line, key, staple: itemMatchesStaples(key, stapleKeys) });
+    });
+    items.sort((a, b) => (a.staple === b.staple ? 0 : a.staple ? 1 : -1));
+    return { recipeId: r.id, title: r.title, items };
+  }).filter((g) => g.items.length);
+}
 
 function openGenerateModal() {
   const byId = new Map(state.recipes.map((r) => [r.id, r]));
@@ -351,10 +373,13 @@ function openGenerateModal() {
     .filter((m) => !m.made)
     .map((m) => byId.get(m.recipeId))
     .filter(Boolean);
-  generateAggregated = aggregateGroceries(recipes);
-  if (!generateAggregated.length) { showToast("Add some meals to this week first."); return; }
-  // Start with nothing selected: you tick the items you actually need to buy.
+  const stapleKeys = new Set(state.staples.map((s) => normalizeIngredientName(s)));
+  generateGroups = buildGenerateGroups(recipes, stapleKeys);
+  if (!generateGroups.length) { showToast("Add some meals to this week first."); return; }
+  // Pre-check items already on the grocery list so a regenerate is additive.
+  const listedKeys = new Set(state.grocery.map((g) => g.itemKey));
   generateSelection = new Set();
+  generateGroups.forEach((g) => g.items.forEach((it) => { if (listedKeys.has(it.key)) generateSelection.add(it.id); }));
   renderGenerateResults();
   $("#generate-grocery-modal").hidden = false;
 }
@@ -363,22 +388,29 @@ function closeGenerateModal() { $("#generate-grocery-modal").hidden = true; }
 function renderGenerateResults() {
   const listEl = $("#generate-grocery-list");
   if (!listEl) return;
-  listEl.innerHTML = generateAggregated.map((a) => `
-    <button class="gen-item${generateSelection.has(a.item_key) ? " is-selected" : ""}" data-key="${escAttr(a.item_key)}">
-      <span class="gen-check">${generateSelection.has(a.item_key) ? "▣" : "▢"}</span>
-      <span class="gen-label">${esc(a.display)}</span>
-    </button>`).join("") || `<p class="loading-note">Nothing to add.</p>`;
+  listEl.innerHTML = generateGroups.map((g) => `
+    <div class="gen-group">
+      <div class="gen-group-head">${esc(g.title)}</div>
+      ${g.items.map((it) => `
+        <button class="gen-item${generateSelection.has(it.id) ? " is-selected" : ""}" data-id="${escAttr(it.id)}">
+          <span class="gen-check">${generateSelection.has(it.id) ? "▣" : "▢"}</span>
+          <span class="gen-label">${esc(it.line)}</span>
+        </button>`).join("")}
+    </div>`).join("") || `<p class="loading-note">Nothing to add.</p>`;
   $$(".gen-item", listEl).forEach((btn) => btn.addEventListener("click", () => {
-    const k = btn.dataset.key;
-    if (generateSelection.has(k)) generateSelection.delete(k); else generateSelection.add(k);
+    const id = btn.dataset.id;
+    if (generateSelection.has(id)) generateSelection.delete(id); else generateSelection.add(id);
     renderGenerateResults();
   }));
   $("#generate-grocery-confirm").textContent = `Generate list (${generateSelection.size})`;
 }
 
 async function confirmGenerateGrocery() {
+  const selectedLines = [];
+  generateGroups.forEach((g) => g.items.forEach((it) => { if (generateSelection.has(it.id)) selectedLines.push(it.line); }));
+  const aggregated = aggregateGroceries([{ id: "selection", ingredients: selectedLines }]);
   const existing = state.grocery.map((g) => ({ item_key: g.itemKey, display: g.display, status: g.status, manual: g.manual }));
-  const next = selectGrocery(existing, generateAggregated, generateSelection);
+  const next = selectGrocery(existing, aggregated, new Set(aggregated.map((a) => a.item_key)));
   await replaceGrocery(next);
   closeGenerateModal();
   renderGroceries();

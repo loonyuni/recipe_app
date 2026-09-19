@@ -196,6 +196,15 @@ function selectGrocery(existing, aggregated, selectedKeys) {
   return out;
 }
 
+// The normalized grouping key for one atomized ingredient line: strip the
+// leading quantity + unit, then normalize the name. Used to pre-check items
+// already on the list and to dedupe within a recipe in the generate picker.
+function ingredientKeyOf(line) {
+  const parsed = parseLeadingQuantity(line);
+  const namePart = parsed ? parseUnitAndName(parsed.rest).name : String(line == null ? "" : line);
+  return normalizeIngredientName(namePart);
+}
+
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { parseUnitAndName, normalizeIngredientName, UNIT_ALIASES, aggregateGroceries, mergeGrocery, GROCERY_STATUS, itemMatchesStaples, selectGrocery };
+  module.exports = { parseUnitAndName, normalizeIngredientName, UNIT_ALIASES, aggregateGroceries, mergeGrocery, GROCERY_STATUS, itemMatchesStaples, selectGrocery, ingredientKeyOf };
 }
