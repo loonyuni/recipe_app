@@ -100,6 +100,14 @@ test("itemMatchesStaples: word-level match on compound names", () => {
   assert.strictEqual(itemMatchesStaples("boiling", staples), false);
 });
 
+const { ingredientKeyOf } = require("../src/grocery.js");
+
+test("ingredientKeyOf: strips quantity + unit, normalizes", () => {
+  assert.strictEqual(ingredientKeyOf("3 tablespoons cornstarch"), "cornstarch");
+  assert.strictEqual(ingredientKeyOf("2 onions"), "onion");
+  assert.strictEqual(ingredientKeyOf("Kosher salt (such as Diamond Crystal) and freshly ground black pepper"), "kosher salt and freshly ground black pepper");
+});
+
 test("selectGrocery: keeps selected + manual, preserves got, drops unselected", () => {
   const existing = [
     { item_key: "onion", display: "2 onions", status: "got", manual: false },

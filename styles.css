@@ -569,6 +569,9 @@ h1 em { color: var(--red); font-weight: 700; font-style: normal; }
 .gen-item.is-selected { background: var(--paper-deep); color: var(--ink); font-weight: 600; }
 .gen-check { flex: none; }
 .gen-label { flex: 1; min-width: 0; }
+.gen-group { margin-top: 6px; }
+.gen-group-head { font-family: var(--mono); text-transform: uppercase; letter-spacing: .08em; font-size: 11px; color: var(--red); padding: 12px 4px 4px; border-top: 1px solid var(--line); }
+.gen-group:first-child .gen-group-head { border-top: 0; }
 
 /* Grocery list */
 .grocery-list { margin-bottom: 18px; }
