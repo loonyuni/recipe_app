@@ -338,47 +338,82 @@ function renderAddMealResults(query) {
 // Aggregate ingredients across every unmade planned meal, fold in pantry
 // staples (marked "have" rather than dropped), and merge onto the living
 // grocery list so existing got/have statuses and manual items survive.
-async function generateGrocery() {
+// Pick-before-generate: pressing Generate opens a picker of the aggregated
+// ingredients from this week's un-made meals. You tick what you need, and only
+// the picked items become the grocery list. Pantry staples start unchecked
+// (word-level match), and items already on the list stay checked.
+let generateAggregated = [];
+let generateSelection = new Set();
+
+function openGenerateModal() {
   const byId = new Map(state.recipes.map((r) => [r.id, r]));
   const recipes = state.plannedMeals
     .filter((m) => !m.made)
     .map((m) => byId.get(m.recipeId))
     .filter(Boolean);
-  const aggregated = aggregateGroceries(recipes);
+  generateAggregated = aggregateGroceries(recipes);
+  if (!generateAggregated.length) { showToast("Add some meals to this week first."); return; }
   const stapleKeys = new Set(state.staples.map((s) => normalizeIngredientName(s)));
+  const inList = new Set(state.grocery.map((g) => g.itemKey));
+  generateSelection = new Set(
+    generateAggregated
+      .filter((a) => inList.has(a.item_key) || !itemMatchesStaples(a.item_key, stapleKeys))
+      .map((a) => a.item_key)
+  );
+  renderGenerateResults();
+  $("#generate-grocery-modal").hidden = false;
+}
+function closeGenerateModal() { $("#generate-grocery-modal").hidden = true; }
+
+function renderGenerateResults() {
+  const listEl = $("#generate-grocery-list");
+  if (!listEl) return;
+  listEl.innerHTML = generateAggregated.map((a) => `
+    <button class="gen-item${generateSelection.has(a.item_key) ? " is-selected" : ""}" data-key="${escAttr(a.item_key)}">
+      <span class="gen-check">${generateSelection.has(a.item_key) ? "▣" : "▢"}</span>
+      <span class="gen-label">${esc(a.display)}</span>
+    </button>`).join("") || `<p class="loading-note">Nothing to add.</p>`;
+  $$(".gen-item", listEl).forEach((btn) => btn.addEventListener("click", () => {
+    const k = btn.dataset.key;
+    if (generateSelection.has(k)) generateSelection.delete(k); else generateSelection.add(k);
+    renderGenerateResults();
+  }));
+  $("#generate-grocery-confirm").textContent = `Generate list (${generateSelection.size})`;
+}
+
+async function confirmGenerateGrocery() {
   const existing = state.grocery.map((g) => ({ item_key: g.itemKey, display: g.display, status: g.status, manual: g.manual }));
-  const merged = mergeGrocery(existing, aggregated, stapleKeys);
-  await replaceGrocery(merged);
+  const next = selectGrocery(existing, generateAggregated, generateSelection);
+  await replaceGrocery(next);
+  closeGenerateModal();
   renderGroceries();
   state.planPane = "groceries";
   $("#plan-pane").hidden = true; $("#grocery-pane").hidden = false;
   $$("#plan-toggle .plan-toggle-btn").forEach((b) => b.classList.toggle("is-active", b.dataset.pane === "groceries"));
 }
 
-// Render the grocery list, grouped by status: Need (to buy), Got (checked off
-// this trip), Have / skipping (pantry staples or manually marked "have").
+// Render the grocery list as a plain checklist: To buy (tap to check off) and
+// Got (checked off this trip). No "have" bucket; filtering happens at generate.
 function renderGroceries() {
   const listEl = $("#grocery-list");
   if (!listEl) return;
-  const groups = { need: [], got: [], have: [] };
-  state.grocery.forEach((g) => (groups[g.status] || groups.need).push(g));
-  const section = (title, items, opts = {}) => items.length ? `
-    <div class="grocery-group grocery-${opts.cls || title.toLowerCase()}">
-      <div class="grocery-group-head">${esc(title)}${opts.count ? ` (${items.length})` : ""}</div>
+  const toBuy = state.grocery.filter((g) => g.status !== "got");
+  const got = state.grocery.filter((g) => g.status === "got");
+  const section = (title, items) => items.length ? `
+    <div class="grocery-group">
+      <div class="grocery-group-head">${esc(title)}</div>
       ${items.map((g) => `
         <div class="grocery-row status-${g.status}" data-grocery-id="${escAttr(g.id)}">
           <input type="checkbox" class="grocery-check" ${g.status === "got" ? "checked" : ""} aria-label="Got it" />
           <span class="grocery-label">${esc(g.display)}${g.manual ? ` <span class="grocery-manual">(added by you)</span>` : ""}</span>
-          <button class="grocery-have" title="I have this">have</button>
           <button class="grocery-remove" aria-label="Remove">×</button>
         </div>`).join("")}
     </div>` : "";
-  const html = section("Need", groups.need) + section("Got", groups.got) + section("Have / skipping", groups.have, { count: true, cls: "have" });
-  listEl.innerHTML = html || `<p class="loading-note">Nothing to buy: generate from this week's meals, or all planned meals are made.</p>`;
+  const html = section("To buy", toBuy) + section("Got", got);
+  listEl.innerHTML = html || `<p class="loading-note">No grocery list yet. Plan meals, then press Generate to pick what you need.</p>`;
   $$(".grocery-row", listEl).forEach((row) => {
     const id = row.dataset.groceryId;
     row.querySelector(".grocery-check").addEventListener("change", (e) => runPlanAction(async () => { await setGroceryStatus(id, e.target.checked ? "got" : "need"); renderGroceries(); }));
-    row.querySelector(".grocery-have").addEventListener("click", () => runPlanAction(async () => { await setGroceryStatus(id, "have"); renderGroceries(); }));
     row.querySelector(".grocery-remove").addEventListener("click", () => runPlanAction(async () => { await clearGrocery((g) => g.id === id); renderGroceries(); }));
   });
 }
@@ -1623,7 +1658,10 @@ $("#add-meal-confirm")?.addEventListener("click", () => runPlanAction(async () =
   renderPlan();
   showToast(`Added ${addMealSelection.size} to this week.`);
 }));
-$("#generate-grocery-button")?.addEventListener("click", () => runPlanAction(generateGrocery));
+$("#generate-grocery-button")?.addEventListener("click", openGenerateModal);
+$("#generate-grocery-close")?.addEventListener("click", closeGenerateModal);
+$("#generate-grocery-modal")?.addEventListener("click", (e) => { if (e.target.id === "generate-grocery-modal") closeGenerateModal(); });
+$("#generate-grocery-confirm")?.addEventListener("click", () => runPlanAction(confirmGenerateGrocery));
 $("#add-grocery-button")?.addEventListener("click", () => {
   const label = prompt("Add an item to the grocery list:");
   if (label && label.trim()) runPlanAction(async () => { await addGroceryItem(label); renderGroceries(); });

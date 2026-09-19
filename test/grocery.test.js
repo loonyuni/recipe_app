@@ -88,3 +88,33 @@ test("mergeGrocery: drops orphaned non-manual, keeps manual", () => {
   assert.ok(!out.some(i => i.item_key === "onion"));
   assert.ok(out.some(i => i.item_key === "milk"));
 });
+
+const { itemMatchesStaples, selectGrocery } = require("../src/grocery.js");
+
+test("itemMatchesStaples: word-level match on compound names", () => {
+  const staples = new Set(["salt", "oil", "water", "black pepper"]);
+  assert.strictEqual(itemMatchesStaples("kosher salt and freshly ground black pepper", staples), true);
+  assert.strictEqual(itemMatchesStaples("neutral-flavored oil", staples), true);
+  assert.strictEqual(itemMatchesStaples("quarts water", staples), true);
+  assert.strictEqual(itemMatchesStaples("cherry tomato", staples), false);
+  assert.strictEqual(itemMatchesStaples("boiling", staples), false);
+});
+
+test("selectGrocery: keeps selected + manual, preserves got, drops unselected", () => {
+  const existing = [
+    { item_key: "onion", display: "2 onions", status: "got", manual: false },
+    { item_key: "manual:milk", display: "milk", status: "need", manual: true }
+  ];
+  const aggregated = [
+    { item_key: "onion", display: "3 onions", recipeIds: [] },
+    { item_key: "flour", display: "200 g flour", recipeIds: [] },
+    { item_key: "salt", display: "salt", recipeIds: [] }
+  ];
+  const out = selectGrocery(existing, aggregated, new Set(["onion", "flour"]));
+  const onion = out.find(i => i.item_key === "onion");
+  assert.strictEqual(onion.display, "3 onions");
+  assert.strictEqual(onion.status, "got");
+  assert.ok(out.find(i => i.item_key === "flour" && i.status === "need"));
+  assert.ok(!out.some(i => i.item_key === "salt"));
+  assert.ok(out.some(i => i.item_key === "manual:milk"));
+});
