@@ -150,7 +150,11 @@ const state = {
   minRating: 0, // minimum-rating filter (0 = off)
   activeRecipe: null,
   editingRecipeId: null,
-  activeImportDraft: null
+  activeImportDraft: null,
+  plannedMeals: [],
+  grocery: [],
+  staples: [],
+  planPane: "plan"
 };
 
 const cloud = {
@@ -621,6 +625,8 @@ function normalizeNutrition(nutrition) {
     fat: toNumber(value.fat)
   };
 }
+
+const DEFAULT_STAPLES = ["salt", "pepper", "black pepper", "olive oil", "oil", "butter", "water", "sugar", "flour"];
 
 // Node-only: expose the pure parsers for unit tests. Guarded so the browser
 // (where `module` is undefined) never sees this and the shared-scope model is
