@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { parseUnitAndName, normalizeIngredientName } = require("../src/grocery.js");
+const { parseUnitAndName, normalizeIngredientName, aggregateGroceries } = require("../src/grocery.js");
 
 test("parseUnitAndName: recognizes a unit and name", () => {
   assert.deepStrictEqual(parseUnitAndName(" tablespoons cornstarch"), { unit: "tbsp", name: "cornstarch" });
@@ -30,4 +30,34 @@ test("normalizeIngredientName: keeps invariant words and short words", () => {
 });
 test("normalizeIngredientName: strips leading article", () => {
   assert.strictEqual(normalizeIngredientName("a big handful cilantro"), "big handful cilantro");
+});
+
+const R = (id, ingredients) => ({ id, ingredients });
+
+test("aggregateGroceries: sums same name + unitless count", () => {
+  const out = aggregateGroceries([R("a", ["2 onions"]), R("b", ["1 onion"])]);
+  const onion = out.find(i => i.item_key === "onion");
+  assert.strictEqual(onion.display, "3 onions");
+});
+test("aggregateGroceries: sums same US volume unit", () => {
+  const out = aggregateGroceries([R("a", ["3 tablespoons oil"]), R("b", ["1 tbsp oil"])]);
+  assert.strictEqual(out.find(i => i.item_key === "oil").display, "4 tbsp oil");
+});
+test("aggregateGroceries: converts within metric mass", () => {
+  const out = aggregateGroceries([R("a", ["500 g flour"]), R("b", ["1 kg flour"])]);
+  assert.strictEqual(out.find(i => i.item_key === "flour").display, "1.5 kg flour");
+});
+test("aggregateGroceries: lists incompatible units side by side", () => {
+  const out = aggregateGroceries([R("a", ["200 g flour"]), R("b", ["1 cup flour"])]);
+  const d = out.find(i => i.item_key === "flour").display;
+  assert.ok(d.includes("200 g") && d.includes("1 cup"), d);
+});
+test("aggregateGroceries: skips headers, keeps no-quantity lines once", () => {
+  const out = aggregateGroceries([R("a", ["Lemon rice:", "Kosher salt", "1 lemon"]), R("b", ["Kosher salt"])]);
+  assert.ok(!out.some(i => i.item_key.endsWith(":")));
+  const salt = out.filter(i => i.item_key === "kosher salt");
+  assert.strictEqual(salt.length, 1);
+});
+test("aggregateGroceries: empty input returns empty", () => {
+  assert.deepStrictEqual(aggregateGroceries([]), []);
 });

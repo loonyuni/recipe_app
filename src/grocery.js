@@ -58,6 +58,76 @@ function normalizeIngredientName(text) {
   return words.join(" ").trim();
 }
 
+// Metric conversion to a base unit so kg/g and l/ml combine. US-customary
+// volume (tsp/tbsp/cup) is intentionally NOT converted (no tsp->cup math);
+// each stays its own bucket. Returns null for units we do not convert.
+const METRIC_BASE = { g: ["mass", 1], kg: ["mass", 1000], ml: ["vol", 1], l: ["vol", 1000] };
+
+function bucketKeyFor(unit) {
+  const m = METRIC_BASE[unit];
+  return m ? m[0] : unit;            // "mass" | "vol" | the raw unit ("tbsp","cup","")
+}
+
+// Render one grouped ingredient into a display string.
+function renderGrocery(key, buckets) {
+  const parts = [];
+  for (const [bucketKey, amount] of buckets) {
+    if (bucketKey === "mass") {
+      parts.push(amount >= 1000 ? `${formatQuantity(amount / 1000)} kg ${key}` : `${formatQuantity(amount)} g ${key}`);
+    } else if (bucketKey === "vol") {
+      parts.push(amount >= 1000 ? `${formatQuantity(amount / 1000)} l ${key}` : `${formatQuantity(amount)} ml ${key}`);
+    } else if (bucketKey === "") {
+      parts.push(`${formatQuantity(amount)} ${amount > 1 ? pluralize(key) : key}`);
+    } else {
+      parts.push(`${formatQuantity(amount)} ${bucketKey} ${key}`);
+    }
+  }
+  return parts.join(" + ");
+}
+
+// Minimal display pluralization for unitless counts ("3 onion" -> "3 onions").
+function pluralize(name) {
+  if (/[^aeiou]y$/.test(name)) return name.slice(0, -1) + "ies";
+  if (/(s|sh|ch|x|z)$/.test(name)) return name + "es";
+  return name + "s";
+}
+
+function aggregateGroceries(recipes) {
+  const map = new Map(); // item_key -> { buckets: Map<bucketKey, amount>, noQty: string|null, recipeIds: Set }
+  const entryFor = (key) => {
+    if (!map.has(key)) map.set(key, { buckets: new Map(), noQty: null, recipeIds: new Set() });
+    return map.get(key);
+  };
+  for (const recipe of recipes || []) {
+    for (const line of normalizeIngredientList(recipe.ingredients || [])) {
+      if (isIngredientHeader(line)) continue;
+      const parsed = parseLeadingQuantity(line);
+      if (!parsed) {
+        const key = normalizeIngredientName(line);
+        if (!key) continue;
+        const e = entryFor(key);
+        if (e.noQty === null) e.noQty = String(line).trim();
+        e.recipeIds.add(recipe.id);
+        continue;
+      }
+      const { unit, name } = parseUnitAndName(parsed.rest);
+      const key = normalizeIngredientName(name);
+      if (!key) continue;
+      const e = entryFor(key);
+      const metric = METRIC_BASE[unit];
+      const bKey = bucketKeyFor(unit);
+      const value = metric ? parsed.value * metric[1] : parsed.value;
+      e.buckets.set(bKey, (e.buckets.get(bKey) || 0) + value);
+      e.recipeIds.add(recipe.id);
+    }
+  }
+  return [...map.entries()].map(([key, e]) => ({
+    item_key: key,
+    display: e.buckets.size ? renderGrocery(key, e.buckets) : e.noQty,
+    recipeIds: [...e.recipeIds]
+  }));
+}
+
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { parseUnitAndName, normalizeIngredientName, UNIT_ALIASES };
+  module.exports = { parseUnitAndName, normalizeIngredientName, UNIT_ALIASES, aggregateGroceries };
 }
