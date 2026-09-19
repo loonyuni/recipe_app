@@ -18,7 +18,7 @@
       href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260917-flat-white" />
+    <link rel="stylesheet" href="styles.css?v=20260918-meal-planning" />
   </head>
   <body>
     <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -47,6 +47,9 @@
           </button>
           <button class="nav-item" data-view="recent">
             <svg class="nav-icon icon"><use href="#i-flame"/></svg> Recently cooked
+          </button>
+          <button class="nav-item" data-view="plan">
+            <svg class="nav-icon icon"><use href="#i-book"/></svg> This week
           </button>
           <button class="nav-item" data-view="pastry">
             <svg class="nav-icon icon"><use href="#i-hat"/></svg> Pastry school
@@ -150,6 +153,44 @@
         </section>
         </div>
         <div id="detail-view" hidden></div>
+        <div id="plan-view" hidden>
+          <section class="content-section plan-section">
+            <div class="plan-toggle" id="plan-toggle" role="tablist">
+              <button class="plan-toggle-btn is-active" data-pane="plan">Plan</button>
+              <button class="plan-toggle-btn" data-pane="groceries">Groceries</button>
+            </div>
+
+            <div id="plan-pane">
+              <div class="section-heading">
+                <h2 id="view-title-plan">This week</h2>
+                <div class="plan-actions">
+                  <button class="filter-button" id="add-meal-button">＋ Add meal</button>
+                  <button class="ghost-button" id="start-new-week-button">Start a new week</button>
+                </div>
+              </div>
+              <div id="planned-list" class="planned-list"></div>
+              <div class="plan-footer">
+                <button class="primary-button" id="generate-grocery-button">Generate / update grocery list</button>
+                <button class="ghost-button" id="clear-made-button">Clear made</button>
+              </div>
+            </div>
+
+            <div id="grocery-pane" hidden>
+              <div class="section-heading">
+                <h2>Grocery list</h2>
+                <div class="plan-actions">
+                  <button class="filter-button" id="add-grocery-button">＋ Add item</button>
+                  <button class="icon-button" id="staples-button" title="Pantry staples">⚙</button>
+                </div>
+              </div>
+              <div id="grocery-list" class="grocery-list"></div>
+              <div class="plan-footer">
+                <button class="ghost-button" id="clear-got-button">Clear got</button>
+                <button class="ghost-button" id="clear-all-grocery-button">Clear all</button>
+              </div>
+            </div>
+          </section>
+        </div>
       </main>
     </div>
 
@@ -300,6 +341,9 @@
                 <input name="customTags" placeholder="weeknight, vegetarian, make ahead" />
               </label>
             </div>
+            <label class="add-to-plan-field">
+              <input type="checkbox" name="addToPlan" /> Add to this week after saving
+            </label>
             <div id="dev-debug-panel" class="dev-debug-panel" hidden>
               <div class="dev-debug-heading">
                 <span><span class="suggestion-spark">◌</span><strong>Dev capture</strong></span>
@@ -339,6 +383,36 @@
       </section>
     </div>
 
+    <div id="add-meal-modal" class="modal-backdrop" hidden>
+      <section class="modal" aria-labelledby="add-meal-title">
+        <button class="modal-close" id="add-meal-close" aria-label="Close">×</button>
+        <p class="eyebrow">Plan the week</p>
+        <h2 id="add-meal-title">Add to this week</h2>
+        <input id="add-meal-search" class="filter-search" type="search" placeholder="Search your recipes…" autocomplete="off" enterkeyhint="search" />
+        <div id="add-meal-results" class="add-meal-results"></div>
+        <div class="form-actions">
+          <button type="button" class="primary-button" id="add-meal-confirm">Add 0 meals</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="staples-modal" class="modal-backdrop" hidden>
+      <section class="modal" aria-labelledby="staples-title">
+        <button class="modal-close" id="staples-close" aria-label="Close">×</button>
+        <p class="eyebrow">Grocery list</p>
+        <h2 id="staples-title">Pantry staples</h2>
+        <p class="modal-intro">Items you usually have. These start unchecked ("have") when you generate a grocery list.</p>
+        <div class="staples-add-row">
+          <input id="staples-input" placeholder="e.g. soy sauce" />
+          <button type="button" class="primary-button" id="staples-add">Add</button>
+        </div>
+        <div id="staples-list" class="staples-list"></div>
+        <div class="form-actions">
+          <button type="button" class="primary-button" id="staples-done">Done</button>
+        </div>
+      </section>
+    </div>
+
     <div id="auth-modal" class="modal-backdrop" hidden>
       <section class="modal auth-modal" aria-labelledby="auth-title">
         <button class="modal-close" id="auth-close" aria-label="Close">×</button>
@@ -372,8 +446,9 @@
     <div id="toast" class="toast" role="status"></div>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="supabase-config.js"></script>
-  <script src="src/helpers.js?v=20260917-flat-white"></script>
-  <script src="src/data.js?v=20260917-flat-white"></script>
-  <script src="src/ui.js?v=20260917-flat-white"></script>
+  <script src="src/helpers.js?v=20260918-meal-planning"></script>
+  <script src="src/grocery.js?v=20260918-meal-planning"></script>
+  <script src="src/data.js?v=20260918-meal-planning"></script>
+  <script src="src/ui.js?v=20260918-meal-planning"></script>
   </body>
 </html>
