@@ -74,6 +74,7 @@ None of these are exposed publicly (no `public_recipes` change, no snapshot rege
 - New sidebar nav item **"This week"** (Lucide calendar/list icon) under Library. Sets `state.view = 'plan'`.
 - New in-memory state: `state.plannedMeals` (array of `{ id, recipeId, day, sortOrder, made }`), `state.grocery` (items), `state.staples`. Loaded alongside recipes on boot for signed-in members; empty/hidden for anon (feature is owner/household only).
 - `render()` gains a `plan` branch that renders `#plan-view` into `main` (a new container beside `#list-view` and `#detail-view`).
+- The plan view has two panes behind a segmented toggle at the top, **Plan | Groceries**: Plan is the meal list (below); Groceries is the shopping list (§E).
 - Layout (chosen): single "This week" list.
   ```
   THIS WEEK                                   [ + Add meal ]
@@ -91,12 +92,27 @@ None of these are exposed publicly (no `public_recipes` change, no snapshot rege
   - `[ DAY ▾ ]` chip → small menu to set Mon–Sun or clear. Purely a label; multiple meals may share a day.
   - `×` → remove from plan.
   - **Clear made** → deletes all `made` rows (with a confirm).
+- **Start a new week** (top of the view): one action clears made meals and the checked-off (`got`) grocery items together, for a clean slate. The granular "Clear made" (plan) and "Clear got" (groceries) remain for resetting a single side.
 - All mutations write to Supabase and update `state` optimistically (same pattern as ratings/cook-log).
 
 ### C. Adding meals to the plan
 
-- **From the plan:** `+ Add meal` opens a search-over-saved-recipes picker (reuse the existing search/`filteredRecipes` matching); selecting one appends a `planned_meals` row (`day` null, `made` false, `sort_order` = max+1).
-- **From a recipe:** an **"＋ Add to this week"** button in the detail view actions row. Adds the recipe; if it's already planned and not made, no-op with a toast ("Already on this week's plan").
+Three entry points, so you're never forced to detour:
+- **From the plan, `+ Add meal`:** a **modal picker** with a search box over saved recipes and **multi-select** (tap several, then "Add N meals"). Reuses the existing search/`filteredRecipes` matching. Each selection appends a `planned_meals` row (`day` null, `made` false, `sort_order` = max+1).
+  ```
+  ┌ Add to this week ───────────────────── × ┐
+  │ [ search your recipes…                  ] │
+  │ ───────────────────────────────────────── │
+  │   ▢  Cabbage miso pasta            35 min  │
+  │   ▣  Thai poached chicken          40 min  │
+  │   ▢  One-pan salmon & broccoli     30 min  │
+  │   ▣  Pumpkin cheesecake muffins    55 min  │
+  │ ───────────────────────────────────────── │
+  │                 [ Add 2 meals ]            │
+  └────────────────────────────────────────── ┘
+  ```
+- **While browsing, quick add:** a small **"＋ Plan"** affordance on each recipe card in the Library grid, and an **"＋ Add to this week"** button in the recipe detail actions row. Both add without leaving the current view; a toast confirms. If already planned and not made, no-op with "Already on this week's plan".
+- **On import:** the import review/confirm screen gets an **"Add to this week after saving"** checkbox (default off). When checked, saving the imported recipe also appends it to the plan in one step.
 
 ### D. Grocery list: aggregation
 
@@ -135,7 +151,7 @@ The list is **one living list**, not a fresh pick each time. `status` per item:
 
 Result: add a recipe, hit update, and only the new ingredients appear (as `need`); everything you already checked off or marked "have" is untouched.
 
-Grocery list UI (its own section in `#plan-view`, below the meal list, or a segmented toggle "Plan | Groceries"):
+Grocery list UI (the **Groceries** pane of the plan-view toggle):
 ```
 GROCERY LIST                         [ + add item ]  [ ⚙ staples ]
 ────────────────────────────────────────────────────────────────
@@ -180,7 +196,11 @@ HAVE / SKIPPING  (3)                                     [ show ▾ ]
 - Ship behind normal deploy; bump `?v=` on assets. Feature is invisible to signed-out visitors.
 - Implementation order: migration → data load + state → plan view (CRUD) → aggregation + tests → grocery merge/state + tests → staples → polish.
 
-## Open questions
+## Resolved decisions
 
-- Grocery list placement: a second section stacked under the meal list, or a "Plan | Groceries" segmented toggle at the top of `#plan-view`? (Leaning toggle for small screens; final call during build with a browser.)
-- Whether "Clear made" should also offer "start a new week" that clears made meals **and** the `got` grocery items in one action.
+- The plan is a **tab** (sidebar "This week"), not a modal. Modals are used only for the add-meal picker and the staples editor.
+- Add-meal picker: **modal with search + multi-select** (add several recipes at once).
+- Quick add while browsing lives on **both** recipe cards ("＋ Plan") and the recipe detail page.
+- Import review has an **"Add to this week after saving"** checkbox.
+- Grocery list shown via a **"Plan | Groceries" toggle** at the top of the plan view (revisit on a browser during build for small-screen polish).
+- **"Start a new week"**: a single top-of-view action clears made meals and the checked-off (`got`) grocery items together; granular "Clear made" / "Clear got" remain for finer control.
