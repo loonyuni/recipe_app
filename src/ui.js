@@ -315,11 +315,16 @@ function renderAddMealResults(query) {
     .filter((r) => !q || r.title.toLowerCase().includes(q))
     .slice(0, 50);
   const listEl = $("#add-meal-results");
-  listEl.innerHTML = results.map((r) => `
+  listEl.innerHTML = results.map((r) => {
+    const thumb = recipeImageUrls(r).at(-1);
+    return `
     <button class="add-meal-item${addMealSelection.has(r.id) ? " is-selected" : ""}" data-recipe-id="${escAttr(r.id)}">
-      ${addMealSelection.has(r.id) ? "▣" : "▢"} ${esc(r.title)}
+      <span class="add-meal-check">${addMealSelection.has(r.id) ? "▣" : "▢"}</span>
+      <span class="add-meal-thumb${thumb ? "" : " add-meal-thumb--empty"}">${thumb ? `<img src="${escAttr(thumb)}" alt="" loading="lazy" decoding="async" />` : ""}</span>
+      <span class="add-meal-title">${esc(r.title)}</span>
       <span class="add-meal-time">${esc(formatTimeLabel(r.time))}</span>
-    </button>`).join("") || `<p class="loading-note">No matches.</p>`;
+    </button>`;
+  }).join("") || `<p class="loading-note">No matches.</p>`;
   $$(".add-meal-item", listEl).forEach((btn) => btn.addEventListener("click", () => {
     const id = btn.dataset.recipeId;
     if (addMealSelection.has(id)) addMealSelection.delete(id); else addMealSelection.add(id);
