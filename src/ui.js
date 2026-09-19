@@ -346,6 +346,8 @@ function renderAddMealResults(query) {
 // holds per-line item ids ("<recipeId>#<index>").
 let generateGroups = [];
 let generateSelection = new Set();
+let generateActiveTab = null;   // recipeId of the active tab
+let generateScale = new Map();  // recipeId -> scale factor (1, 2, or 3)
 
 // Build the picker groups: one per un-made recipe, its atomized ingredient
 // lines (headers skipped, deduped within the recipe), sorted so likely staples
@@ -367,10 +369,18 @@ function buildGenerateGroups(recipes, stapleKeys) {
   }).filter((g) => g.items.length);
 }
 
+function scaleForRecipe(recipeId) { return generateScale.get(recipeId) || 1; }
+// A scaled ingredient line (identity at 1x, to avoid reformatting clean text).
+function scaledLine(line, factor) { return factor === 1 ? line : scaleIngredient(line, factor).text; }
+
 function openGenerateModal() {
   const byId = new Map(state.recipes.map((r) => [r.id, r]));
+  // Newest planned meal first (highest sort_order), so a just-added recipe is
+  // the leftmost tab and you do not have to scroll to find it.
   const recipes = state.plannedMeals
     .filter((m) => !m.made)
+    .slice()
+    .sort((a, b) => b.sortOrder - a.sortOrder)
     .map((m) => byId.get(m.recipeId))
     .filter(Boolean);
   const stapleKeys = new Set(state.staples.map((s) => normalizeIngredientName(s)));
@@ -380,6 +390,8 @@ function openGenerateModal() {
   const listedKeys = new Set(state.grocery.map((g) => g.itemKey));
   generateSelection = new Set();
   generateGroups.forEach((g) => g.items.forEach((it) => { if (listedKeys.has(it.key)) generateSelection.add(it.id); }));
+  generateScale = new Map();
+  generateActiveTab = generateGroups[0].recipeId;
   renderGenerateResults();
   $("#generate-grocery-modal").hidden = false;
 }
@@ -388,15 +400,27 @@ function closeGenerateModal() { $("#generate-grocery-modal").hidden = true; }
 function renderGenerateResults() {
   const listEl = $("#generate-grocery-list");
   if (!listEl) return;
-  listEl.innerHTML = generateGroups.map((g) => `
-    <div class="gen-group">
-      <div class="gen-group-head">${esc(g.title)}</div>
-      ${g.items.map((it) => `
-        <button class="gen-item${generateSelection.has(it.id) ? " is-selected" : ""}" data-id="${escAttr(it.id)}">
-          <span class="gen-check">${generateSelection.has(it.id) ? "▣" : "▢"}</span>
-          <span class="gen-label">${esc(it.line)}</span>
-        </button>`).join("")}
-    </div>`).join("") || `<p class="loading-note">Nothing to add.</p>`;
+  const active = generateGroups.find((g) => g.recipeId === generateActiveTab) || generateGroups[0];
+  const factor = scaleForRecipe(active.recipeId);
+  const tabs = generateGroups.map((g) => {
+    const picked = g.items.filter((it) => generateSelection.has(it.id)).length;
+    const scaled = scaleForRecipe(g.recipeId);
+    return `<button class="gen-tab${g.recipeId === active.recipeId ? " is-active" : ""}" data-recipe="${escAttr(g.recipeId)}">
+      <span class="gen-tab-title">${esc(g.title)}</span>${scaled > 1 ? `<span class="gen-tab-scale">${scaled}×</span>` : ""}${picked ? `<span class="gen-tab-count">${picked}</span>` : ""}
+    </button>`;
+  }).join("");
+  const scaleBtns = [1, 2, 3].map((f) => `<button class="gen-scale-btn${f === factor ? " is-active" : ""}" data-scale="${f}">${f}×</button>`).join("");
+  const items = active.items.map((it) => `
+    <button class="gen-item${generateSelection.has(it.id) ? " is-selected" : ""}" data-id="${escAttr(it.id)}">
+      <span class="gen-check">${generateSelection.has(it.id) ? "▣" : "▢"}</span>
+      <span class="gen-label">${esc(scaledLine(it.line, factor))}</span>
+    </button>`).join("");
+  listEl.innerHTML = `
+    <div class="gen-tabs">${tabs}</div>
+    <div class="gen-scale"><span class="gen-scale-label">Make</span>${scaleBtns}</div>
+    <div class="gen-items">${items}</div>`;
+  $$(".gen-tab", listEl).forEach((btn) => btn.addEventListener("click", () => { generateActiveTab = btn.dataset.recipe; renderGenerateResults(); }));
+  $$(".gen-scale-btn", listEl).forEach((btn) => btn.addEventListener("click", () => { generateScale.set(active.recipeId, Number(btn.dataset.scale)); renderGenerateResults(); }));
   $$(".gen-item", listEl).forEach((btn) => btn.addEventListener("click", () => {
     const id = btn.dataset.id;
     if (generateSelection.has(id)) generateSelection.delete(id); else generateSelection.add(id);
@@ -407,7 +431,10 @@ function renderGenerateResults() {
 
 async function confirmGenerateGrocery() {
   const selectedLines = [];
-  generateGroups.forEach((g) => g.items.forEach((it) => { if (generateSelection.has(it.id)) selectedLines.push(it.line); }));
+  generateGroups.forEach((g) => {
+    const factor = scaleForRecipe(g.recipeId);
+    g.items.forEach((it) => { if (generateSelection.has(it.id)) selectedLines.push(scaledLine(it.line, factor)); });
+  });
   const aggregated = aggregateGroceries([{ id: "selection", ingredients: selectedLines }]);
   const existing = state.grocery.map((g) => ({ item_key: g.itemKey, display: g.display, status: g.status, manual: g.manual }));
   const next = selectGrocery(existing, aggregated, new Set(aggregated.map((a) => a.item_key)));
