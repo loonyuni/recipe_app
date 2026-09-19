@@ -234,6 +234,47 @@ function updateReadOnlyChrome() {
   if (newButton) newButton.hidden = readOnly;
   const emptyButton = $("#empty-new-button");
   if (emptyButton) emptyButton.hidden = readOnly;
+  // Meal planning is a household feature (spec §F): hide the nav entry
+  // entirely for signed-out visitors rather than showing an empty plan.
+  const planNav = $(".nav-item[data-view='plan']");
+  if (planNav) planNav.hidden = !cloud.connected;
+}
+
+const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+// Render the "This week" meal list: unmade meals first (by sort order), made
+// meals sink to the bottom. Each row lets you jump to the recipe, set a day,
+// mark it made, or remove it from the plan.
+function renderPlan() {
+  const listEl = $("#planned-list");
+  if (!listEl) return;
+  const byId = new Map(state.recipes.map((r) => [r.id, r]));
+  const meals = [...state.plannedMeals]
+    .sort((a, b) => (a.made === b.made ? a.sortOrder - b.sortOrder : a.made ? 1 : -1));
+  if (!meals.length) {
+    listEl.innerHTML = `<p class="loading-note">No meals planned yet. Use “Add meal”, or “Add to this week” on any recipe.</p>`;
+    return;
+  }
+  listEl.innerHTML = meals.map((m) => {
+    const recipe = byId.get(m.recipeId);
+    const title = recipe ? esc(recipe.title) : "(recipe removed)";
+    return `<div class="planned-row${m.made ? " is-made" : ""}" data-meal-id="${escAttr(m.id)}">
+      <input type="checkbox" class="planned-made" ${m.made ? "checked" : ""} aria-label="Mark made" />
+      <button class="planned-title" data-recipe-id="${escAttr(m.recipeId)}">${title}</button>
+      <select class="planned-day" aria-label="Day">
+        <option value=""${m.day == null ? " selected" : ""}>none</option>
+        ${DAY_LABELS.map((d, i) => `<option value="${i}"${m.day === i ? " selected" : ""}>${d}</option>`).join("")}
+      </select>
+      <button class="planned-remove" aria-label="Remove">×</button>
+    </div>`;
+  }).join("");
+  $$(".planned-row", listEl).forEach((row) => {
+    const id = row.dataset.mealId;
+    row.querySelector(".planned-made").addEventListener("change", async (e) => { await updatePlannedMeal(id, { made: e.target.checked }); renderPlan(); });
+    row.querySelector(".planned-title").addEventListener("click", (e) => showRecipe(e.target.dataset.recipeId));
+    row.querySelector(".planned-day").addEventListener("change", async (e) => { await updatePlannedMeal(id, { day: e.target.value === "" ? null : Number(e.target.value) }); });
+    row.querySelector(".planned-remove").addEventListener("click", async () => { await removePlannedMeal(id); renderPlan(); });
+  });
 }
 
 function render() {
@@ -242,15 +283,26 @@ function render() {
   updateReadOnlyChrome();
   renderRecentlyViewed();
   const detail = state.mode === "detail" && state.activeRecipe;
-  $("#list-view").hidden = detail;
+  // The "This week" plan is household-only (spec §F): a signed-out visitor
+  // never has a household, so stale/shared state pointing at it falls back to
+  // the library view instead of showing an empty plan pane.
+  if (state.view === "plan" && !cloud.connected) state.view = "library";
+  const planView = !detail && state.view === "plan";
   $("#detail-view").hidden = !detail;
+  $("#plan-view").hidden = !planView;
+  $("#list-view").hidden = detail || planView;
   if (detail) {
     renderDetail(state.activeRecipe);
     return;
   }
+  $$(".nav-item").forEach((item) => item.classList.toggle("is-active", item.dataset.view === state.view));
+  if (planView) {
+    renderPlan();
+    renderGroceries();
+    return;
+  }
   const titles = { library: "All recipes", recent: "Recently cooked", pastry: "Pastry school" };
   $("#view-title").firstChild.textContent = (titles[state.view] || "All recipes") + " ";
-  $$(".nav-item").forEach((item) => item.classList.toggle("is-active", item.dataset.view === state.view));
   // First paint while the cloud/public library loads: show a loading note instead
   // of the seed recipes, so returning visitors don't see a flash-then-reload.
   if (state.booting) {
@@ -1423,6 +1475,14 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") { closeModal(); closeImportModal(); closeAuthModal(); closeLabelManager(); $("#filter-popover").hidden = true; }
 });
 $$(".nav-item").forEach((item) => item.addEventListener("click", () => { state.view = item.dataset.view; state.mode = "list"; state.activeRecipe = null; clearDrawerUrl(); closeMenu(); render(); }));
+$$("#plan-toggle .plan-toggle-btn").forEach((btn) => btn.addEventListener("click", () => {
+  state.planPane = btn.dataset.pane;
+  $$("#plan-toggle .plan-toggle-btn").forEach((b) => b.classList.toggle("is-active", b === btn));
+  $("#plan-pane").hidden = state.planPane !== "plan";
+  $("#grocery-pane").hidden = state.planPane !== "groceries";
+}));
+$("#clear-made-button")?.addEventListener("click", async () => { if (confirm("Clear all meals marked made?")) { await clearMadeMeals(); renderPlan(); } });
+$("#start-new-week-button")?.addEventListener("click", async () => { if (confirm("Start a new week? This clears made meals and checked-off grocery items.")) { await startNewWeek(); renderPlan(); renderGroceries(); } });
 $("#recipe-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const data = new FormData(event.target);
