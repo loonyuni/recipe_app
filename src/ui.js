@@ -353,13 +353,8 @@ function openGenerateModal() {
     .filter(Boolean);
   generateAggregated = aggregateGroceries(recipes);
   if (!generateAggregated.length) { showToast("Add some meals to this week first."); return; }
-  const stapleKeys = new Set(state.staples.map((s) => normalizeIngredientName(s)));
-  const inList = new Set(state.grocery.map((g) => g.itemKey));
-  generateSelection = new Set(
-    generateAggregated
-      .filter((a) => inList.has(a.item_key) || !itemMatchesStaples(a.item_key, stapleKeys))
-      .map((a) => a.item_key)
-  );
+  // Start with nothing selected: you tick the items you actually need to buy.
+  generateSelection = new Set();
   renderGenerateResults();
   $("#generate-grocery-modal").hidden = false;
 }
