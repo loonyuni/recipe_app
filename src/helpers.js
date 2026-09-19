@@ -130,7 +130,9 @@ const starterRecipes = [
   }
 ];
 
-const storedRecipes = JSON.parse(localStorage.getItem("kitchen-archive-recipes") || "null");
+const storedRecipes = (typeof localStorage !== "undefined")
+  ? JSON.parse(localStorage.getItem("kitchen-archive-recipes") || "null")
+  : null;
 // An empty array is truthy, so `stored || starter` would leave a signed-out
 // visitor staring at zero recipes once the cache is ever persisted as []
 // (which happens transiently mid cloud-load and on some sign-out paths).
@@ -188,7 +190,7 @@ const personalConfig = {
 const localReviewers = personalConfig.localReviewers;
 const hiddenReviewers = new Set(personalConfig.hiddenReviewers);
 
-const queryParams = new URLSearchParams(window.location.search);
+const queryParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
 const devMode = queryParams.has("dev");
 const mockMode = queryParams.has("mock");
 // Permalink target parsed from ?recipe=<slug>. Opened on load (deep link) and
@@ -618,5 +620,12 @@ function normalizeNutrition(nutrition) {
     carbs: toNumber(value.carbs),
     fat: toNumber(value.fat)
   };
+}
+
+// Node-only: expose the pure parsers for unit tests. Guarded so the browser
+// (where `module` is undefined) never sees this and the shared-scope model is
+// unchanged.
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { parseLeadingQuantity, isIngredientHeader, normalizeIngredientList, formatQuantity, splitCompoundIngredient };
 }
 
