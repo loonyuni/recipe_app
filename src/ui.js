@@ -1623,8 +1623,8 @@ $("#add-grocery-button")?.addEventListener("click", () => {
   const label = prompt("Add an item to the grocery list:");
   if (label && label.trim()) runPlanAction(async () => { await addGroceryItem(label); renderGroceries(); });
 });
-$("#clear-got-button")?.addEventListener("click", async () => { await clearGrocery((g) => g.status === "got"); renderGroceries(); });
-$("#clear-all-grocery-button")?.addEventListener("click", async () => { if (confirm("Clear the whole grocery list?")) { await clearGrocery(() => true); renderGroceries(); } });
+$("#clear-got-button")?.addEventListener("click", () => runPlanAction(async () => { await clearGrocery((g) => g.status === "got"); renderGroceries(); }));
+$("#clear-all-grocery-button")?.addEventListener("click", () => { if (confirm("Clear the whole grocery list?")) runPlanAction(async () => { await clearGrocery(() => true); renderGroceries(); }); });
 $("#staples-button")?.addEventListener("click", openStaples);
 $("#staples-close")?.addEventListener("click", closeStaples);
 $("#staples-done")?.addEventListener("click", closeStaples);
