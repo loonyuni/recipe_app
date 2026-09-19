@@ -366,6 +366,22 @@ function renderGroceries() {
   });
 }
 
+// --- Pantry staples editor (mirrors the label manager) ----------------------
+function openStaples() { renderStaples(); $("#staples-modal").hidden = false; }
+function closeStaples() { $("#staples-modal").hidden = true; }
+function renderStaples() {
+  const listEl = $("#staples-list");
+  if (!listEl) return;
+  listEl.innerHTML = state.staples.length
+    ? state.staples.map((name) => `
+      <div class="staples-row" data-staple="${escAttr(name)}">
+        <span>${esc(name)}</span>
+        <button type="button" class="danger-button staples-remove" data-remove="${escAttr(name)}">Remove</button>
+      </div>`).join("")
+    : `<p class="loading-note">No staples yet.</p>`;
+  $$(".staples-remove", listEl).forEach((btn) => btn.addEventListener("click", async () => { await removeStaple(btn.dataset.remove); renderStaples(); }));
+}
+
 function render() {
   renderLabels();
   renderFilters();
@@ -1595,6 +1611,12 @@ $("#add-grocery-button")?.addEventListener("click", async () => {
 });
 $("#clear-got-button")?.addEventListener("click", async () => { await clearGrocery((g) => g.status === "got"); renderGroceries(); });
 $("#clear-all-grocery-button")?.addEventListener("click", async () => { if (confirm("Clear the whole grocery list?")) { await clearGrocery(() => true); renderGroceries(); } });
+$("#staples-button")?.addEventListener("click", openStaples);
+$("#staples-close")?.addEventListener("click", closeStaples);
+$("#staples-done")?.addEventListener("click", closeStaples);
+$("#staples-modal")?.addEventListener("click", (e) => { if (e.target.id === "staples-modal") closeStaples(); });
+$("#staples-add")?.addEventListener("click", async () => { const v = $("#staples-input").value; if (v.trim()) { await addStaple(v); $("#staples-input").value = ""; renderStaples(); } });
+$("#staples-input")?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("#staples-add").click(); } });
 $("#recipe-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const data = new FormData(event.target);
