@@ -162,6 +162,40 @@ function mergeGrocery(existing, aggregated, stapleKeys) {
   return out;
 }
 
+// Word-level staple match, used only to pre-uncheck items in the generate
+// picker. An item matches when all of some staple's words appear as words in
+// the item key: "salt" catches "kosher salt and freshly ground black pepper",
+// "oil" catches "neutral-flavored oil", "water" catches "quarts water". This is
+// looser than the exact-key match used elsewhere, on purpose.
+function itemMatchesStaples(itemKey, stapleKeys) {
+  const words = new Set(String(itemKey || "").split(/[\s-]+/).filter(Boolean));
+  for (const s of (stapleKeys instanceof Set ? stapleKeys : (stapleKeys || []))) {
+    const sWords = String(s).split(/[\s-]+/).filter(Boolean);
+    if (sWords.length && sWords.every((w) => words.has(w))) return true;
+  }
+  return false;
+}
+
+// Build the grocery list from an explicit selection of aggregated item_keys
+// (the pick-before-generate flow). Selected aggregated items become rows,
+// preserving an existing row's status (so a checked-off "got" survives a
+// regenerate); existing manual items are always kept. Unselected non-manual
+// items drop off.
+function selectGrocery(existing, aggregated, selectedKeys) {
+  const sel = selectedKeys instanceof Set ? selectedKeys : new Set(selectedKeys || []);
+  const existingByKey = new Map((existing || []).map((it) => [it.item_key, it]));
+  const out = [];
+  for (const agg of aggregated || []) {
+    if (!sel.has(agg.item_key)) continue;
+    const prev = existingByKey.get(agg.item_key);
+    out.push({ item_key: agg.item_key, display: agg.display, status: prev ? prev.status : GROCERY_STATUS.NEED, manual: false });
+  }
+  for (const it of existing || []) {
+    if (it.manual) out.push({ ...it });
+  }
+  return out;
+}
+
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { parseUnitAndName, normalizeIngredientName, UNIT_ALIASES, aggregateGroceries, mergeGrocery, GROCERY_STATUS };
+  module.exports = { parseUnitAndName, normalizeIngredientName, UNIT_ALIASES, aggregateGroceries, mergeGrocery, GROCERY_STATUS, itemMatchesStaples, selectGrocery };
 }
