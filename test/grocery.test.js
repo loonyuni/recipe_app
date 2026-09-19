@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { parseUnitAndName, normalizeIngredientName, aggregateGroceries } = require("../src/grocery.js");
+const { parseUnitAndName, normalizeIngredientName, aggregateGroceries, mergeGrocery, GROCERY_STATUS } = require("../src/grocery.js");
 
 test("parseUnitAndName: recognizes a unit and name", () => {
   assert.deepStrictEqual(parseUnitAndName(" tablespoons cornstarch"), { unit: "tbsp", name: "cornstarch" });
@@ -60,4 +60,31 @@ test("aggregateGroceries: skips headers, keeps no-quantity lines once", () => {
 });
 test("aggregateGroceries: empty input returns empty", () => {
   assert.deepStrictEqual(aggregateGroceries([]), []);
+});
+
+test("GROCERY_STATUS: has the three expected statuses", () => {
+  assert.deepStrictEqual(GROCERY_STATUS, { NEED: "need", HAVE: "have", GOT: "got" });
+});
+test("mergeGrocery: preserves status and updates display", () => {
+  const existing = [{ item_key: "onion", display: "2 onions", status: "got", manual: false }];
+  const agg = [{ item_key: "onion", display: "3 onions", recipeIds: [] }];
+  const out = mergeGrocery(existing, agg, new Set());
+  assert.deepStrictEqual(out, [{ item_key: "onion", display: "3 onions", status: "got", manual: false }]);
+});
+test("mergeGrocery: new item is need, staple is have", () => {
+  const out = mergeGrocery([], [
+    { item_key: "onion", display: "1 onion", recipeIds: [] },
+    { item_key: "salt", display: "Kosher salt", recipeIds: [] }
+  ], new Set(["salt"]));
+  assert.strictEqual(out.find(i => i.item_key === "onion").status, "need");
+  assert.strictEqual(out.find(i => i.item_key === "salt").status, "have");
+});
+test("mergeGrocery: drops orphaned non-manual, keeps manual", () => {
+  const existing = [
+    { item_key: "onion", display: "1 onion", status: "need", manual: false },
+    { item_key: "milk", display: "milk", status: "need", manual: true }
+  ];
+  const out = mergeGrocery(existing, [], new Set());
+  assert.ok(!out.some(i => i.item_key === "onion"));
+  assert.ok(out.some(i => i.item_key === "milk"));
 });

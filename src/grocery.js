@@ -128,6 +128,40 @@ function aggregateGroceries(recipes) {
   }));
 }
 
+const GROCERY_STATUS = { NEED: "need", HAVE: "have", GOT: "got" };
+
+// Merge freshly aggregated items into the existing living list. Preserves each
+// existing item's status (got/have survive), refreshes display totals, adds new
+// items as need (or have when they match a pantry staple), drops non-manual
+// items no longer produced by any recipe, and always keeps manual items.
+function mergeGrocery(existing, aggregated, stapleKeys) {
+  const staples = stapleKeys || new Set();
+  const existingByKey = new Map((existing || []).map((it) => [it.item_key, it]));
+  const aggByKey = new Map((aggregated || []).map((it) => [it.item_key, it]));
+  const out = [];
+  // 1. aggregated items: update existing (keep status) or insert new.
+  for (const agg of aggregated || []) {
+    const prev = existingByKey.get(agg.item_key);
+    if (prev) {
+      out.push({ item_key: prev.item_key, display: agg.display, status: prev.status, manual: prev.manual });
+    } else {
+      out.push({
+        item_key: agg.item_key,
+        display: agg.display,
+        status: staples.has(agg.item_key) ? GROCERY_STATUS.HAVE : GROCERY_STATUS.NEED,
+        manual: false
+      });
+    }
+  }
+  // 2. keep manual items and existing items not in this aggregation only if manual.
+  for (const it of existing || []) {
+    if (aggByKey.has(it.item_key)) continue; // already emitted in step 1
+    if (it.manual) out.push({ ...it });
+    // non-manual + not in aggregation => dropped
+  }
+  return out;
+}
+
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { parseUnitAndName, normalizeIngredientName, UNIT_ALIASES, aggregateGroceries };
+  module.exports = { parseUnitAndName, normalizeIngredientName, UNIT_ALIASES, aggregateGroceries, mergeGrocery, GROCERY_STATUS };
 }
