@@ -205,6 +205,7 @@ function renderRecipes() {
       <div class="recipe-card__body">
         <p>${esc(recipe.description)}</p>
         <div class="card-meta"><span><svg class="icon"><use href="#i-clock"/></svg> ${esc(formatTimeLabel(recipe.time))}</span><span>${esc(recipe.servings)} servings</span>${recipe.cookCount ? `<span class="card-cook-badge">Made ${esc(recipe.cookCount)}×</span>` : ""}</div>
+        ${canEditRecipe(recipe) ? `<button class="card-plan" data-plan-id="${escAttr(recipe.id)}" aria-label="Add to this week" title="Add to this week">＋ Plan</button>` : ""}
         <div class="card-footer">
           <div class="card-tags">${recipe.tags.slice(0, 2).map((tag) => `<span class="card-tag">${esc(tag)}</span>`).join("")}</div>
           <span class="card-rating">★ ${averageRating(recipe).toFixed(1)}</span>
@@ -216,6 +217,13 @@ function renderRecipes() {
     card.addEventListener("click", () => showRecipe(card.dataset.id));
     card.addEventListener("keydown", (event) => { if (event.key === "Enter") showRecipe(card.dataset.id); });
   });
+  $$(".card-plan").forEach((btn) => btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const id = btn.dataset.planId;
+    if (state.plannedMeals.some((m) => m.recipeId === id && !m.made)) { showToast("Already on this week's plan."); return; }
+    await addPlannedMeal(id);
+    showToast("Added to this week.");
+  }));
 }
 
 function renderFilters() {
@@ -275,6 +283,37 @@ function renderPlan() {
     row.querySelector(".planned-day").addEventListener("change", async (e) => { await updatePlannedMeal(id, { day: e.target.value === "" ? null : Number(e.target.value) }); });
     row.querySelector(".planned-remove").addEventListener("click", async () => { await removePlannedMeal(id); renderPlan(); });
   });
+}
+
+// --- Add-meal modal: search + multi-select onto this week's plan -----------
+let addMealSelection = new Set();
+
+function openAddMealModal() {
+  addMealSelection = new Set();
+  $("#add-meal-search").value = "";
+  renderAddMealResults("");
+  $("#add-meal-modal").hidden = false;
+  $("#add-meal-search").focus();
+}
+function closeAddMealModal() { $("#add-meal-modal").hidden = true; }
+
+function renderAddMealResults(query) {
+  const q = query.trim().toLowerCase();
+  const results = state.recipes
+    .filter((r) => !q || r.title.toLowerCase().includes(q))
+    .slice(0, 50);
+  const listEl = $("#add-meal-results");
+  listEl.innerHTML = results.map((r) => `
+    <button class="add-meal-item${addMealSelection.has(r.id) ? " is-selected" : ""}" data-recipe-id="${escAttr(r.id)}">
+      ${addMealSelection.has(r.id) ? "▣" : "▢"} ${esc(r.title)}
+      <span class="add-meal-time">${esc(formatTimeLabel(r.time))}</span>
+    </button>`).join("") || `<p class="loading-note">No matches.</p>`;
+  $$(".add-meal-item", listEl).forEach((btn) => btn.addEventListener("click", () => {
+    const id = btn.dataset.recipeId;
+    if (addMealSelection.has(id)) addMealSelection.delete(id); else addMealSelection.add(id);
+    renderAddMealResults($("#add-meal-search").value);
+    $("#add-meal-confirm").textContent = `Add ${addMealSelection.size} meal${addMealSelection.size === 1 ? "" : "s"}`;
+  }));
 }
 
 function render() {
@@ -884,6 +923,7 @@ function renderDetail(recipe) {
       : `<p class="share-hint">Viewing a shared recipe (read-only).</p>`}
     <div class="cook-tracker">
       ${editable ? `<button type="button" class="primary-button cook-button" id="made-this-button">✓ Made this</button>` : ""}
+      ${editable ? `<button type="button" class="ghost-button" id="add-to-plan-button">＋ Add to this week</button>` : ""}
       <span class="cook-count" id="cook-count-label">${cookCountLabel(recipe)}</span>
     </div>
     ${recipeImageUrls(recipe).length ? `
@@ -923,6 +963,11 @@ function renderDetail(recipe) {
   $("#breadcrumb-home").addEventListener("click", showList);
   $$("#detail-view [data-related-id]").forEach((el) => el.addEventListener("click", () => showRecipe(el.dataset.relatedId)));
   $("#made-this-button")?.addEventListener("click", () => logCook(recipe));
+  $("#add-to-plan-button")?.addEventListener("click", async () => {
+    if (state.plannedMeals.some((m) => m.recipeId === recipe.id && !m.made)) { showToast("Already on this week's plan."); return; }
+    await addPlannedMeal(recipe.id);
+    showToast("Added to this week.");
+  });
   $("#add-photo-button")?.addEventListener("click", () => $("#photo-input")?.click());
   $("#photo-input")?.addEventListener("change", (event) => {
     const file = event.target.files && event.target.files[0];
@@ -1483,6 +1528,16 @@ $$("#plan-toggle .plan-toggle-btn").forEach((btn) => btn.addEventListener("click
 }));
 $("#clear-made-button")?.addEventListener("click", async () => { if (confirm("Clear all meals marked made?")) { await clearMadeMeals(); renderPlan(); } });
 $("#start-new-week-button")?.addEventListener("click", async () => { if (confirm("Start a new week? This clears made meals and checked-off grocery items.")) { await startNewWeek(); renderPlan(); renderGroceries(); } });
+$("#add-meal-button")?.addEventListener("click", openAddMealModal);
+$("#add-meal-close")?.addEventListener("click", closeAddMealModal);
+$("#add-meal-modal")?.addEventListener("click", (e) => { if (e.target.id === "add-meal-modal") closeAddMealModal(); });
+$("#add-meal-search")?.addEventListener("input", (e) => renderAddMealResults(e.target.value));
+$("#add-meal-confirm")?.addEventListener("click", async () => {
+  for (const id of addMealSelection) await addPlannedMeal(id);
+  closeAddMealModal();
+  renderPlan();
+  showToast(`Added ${addMealSelection.size} to this week.`);
+});
 $("#recipe-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const data = new FormData(event.target);
@@ -1568,7 +1623,10 @@ $("#import-review-form").addEventListener("submit", (event) => {
   applyRecipeSections(recipe, readSectionEditor($("#import-section-editor")));
   closeImportModal();
   state.activeImportDraft = null;
-  persistNewRecipe(recipe);
+  const addToPlan = data.get("addToPlan") === "on";
+  persistNewRecipe(recipe).then(async () => {
+    if (addToPlan && recipe.id) { await addPlannedMeal(recipe.id); showToast("Saved and added to this week."); }
+  });
 });
 $("#copy-import-debug").addEventListener("click", async () => {
   const packet = JSON.stringify(state.lastImportDebug || {}, null, 2);
