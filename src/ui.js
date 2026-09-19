@@ -382,9 +382,7 @@ async function confirmGenerateGrocery() {
   await replaceGrocery(next);
   closeGenerateModal();
   renderGroceries();
-  state.planPane = "groceries";
-  $("#plan-pane").hidden = true; $("#grocery-pane").hidden = false;
-  $$("#plan-toggle .plan-toggle-btn").forEach((b) => b.classList.toggle("is-active", b.dataset.pane === "groceries"));
+  setPlanPane("groceries");
 }
 
 // Render the grocery list as a plain checklist: To buy (tap to check off) and
@@ -449,6 +447,9 @@ function render() {
   }
   $$(".nav-item").forEach((item) => item.classList.toggle("is-active", item.dataset.view === state.view));
   if (planView) {
+    $("#plan-pane").hidden = state.planPane !== "plan";
+    $("#grocery-pane").hidden = state.planPane !== "groceries";
+    $$("#plan-toggle .plan-toggle-btn").forEach((b) => b.classList.toggle("is-active", b.dataset.pane === state.planPane));
     renderPlan();
     renderGroceries();
     return;
@@ -1179,12 +1180,52 @@ function clearDrawerUrl() {
   window.history.replaceState({}, "", url);
 }
 
+// Reflect the active nav view in the URL as ?view=<name> (library is the bare
+// URL). pushState so Back returns to the previous view; a refresh restores it.
+function syncViewUrl(view) {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("recipe");
+  if (view && view !== "library") url.searchParams.set("view", view); else url.searchParams.delete("view");
+  if (view !== "plan") url.searchParams.delete("pane");
+  window.history.pushState({ view }, "", url);
+}
+
+// Switch the plan view's Plan | Groceries pane: update state, the DOM, and the
+// ?pane= param (replaceState, so pane toggles don't stack history entries).
+function setPlanPane(pane) {
+  state.planPane = pane === "groceries" ? "groceries" : "plan";
+  $("#plan-pane").hidden = state.planPane !== "plan";
+  $("#grocery-pane").hidden = state.planPane !== "groceries";
+  $$("#plan-toggle .plan-toggle-btn").forEach((b) => b.classList.toggle("is-active", b.dataset.pane === state.planPane));
+  const url = new URL(window.location.href);
+  url.searchParams.delete("recipe");
+  url.searchParams.set("view", "plan");
+  if (state.planPane === "groceries") url.searchParams.set("pane", "groceries"); else url.searchParams.delete("pane");
+  window.history.replaceState({ view: "plan", pane: state.planPane }, "", url);
+}
+
+// Restore the ?view=/?pane= target after the cloud library loads. Plan is
+// member-only, so it is only restored once connected; anon stays on library.
+function restoreInitialView() {
+  if (!["recent", "pastry", "plan"].includes(initialView)) return;
+  if (initialView === "plan" && !cloud.connected) return;
+  state.mode = "list";
+  state.activeRecipe = null;
+  state.view = initialView;
+  if (initialView === "plan") state.planPane = initialPane === "groceries" ? "groceries" : "plan";
+  render();
+}
+
 // Browser back/forward: reconcile the drawer with the ?recipe=<slug> in the URL.
 window.addEventListener("popstate", async () => {
-  const slug = new URLSearchParams(window.location.search).get("recipe");
+  const params = new URLSearchParams(window.location.search);
+  const slug = params.get("recipe");
   if (!slug) {
     state.mode = "list";
     state.activeRecipe = null;
+    const view = params.get("view");
+    state.view = ["recent", "pastry", "plan"].includes(view) ? view : "library";
+    if (state.view === "plan") state.planPane = params.get("pane") === "groceries" ? "groceries" : "plan";
     render();
     return;
   }
@@ -1634,13 +1675,8 @@ document.addEventListener("keydown", (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); $("#search-input").focus(); }
   if (event.key === "Escape") { closeModal(); closeImportModal(); closeAuthModal(); closeLabelManager(); $("#filter-popover").hidden = true; }
 });
-$$(".nav-item").forEach((item) => item.addEventListener("click", () => { state.view = item.dataset.view; state.mode = "list"; state.activeRecipe = null; clearDrawerUrl(); closeMenu(); render(); }));
-$$("#plan-toggle .plan-toggle-btn").forEach((btn) => btn.addEventListener("click", () => {
-  state.planPane = btn.dataset.pane;
-  $$("#plan-toggle .plan-toggle-btn").forEach((b) => b.classList.toggle("is-active", b === btn));
-  $("#plan-pane").hidden = state.planPane !== "plan";
-  $("#grocery-pane").hidden = state.planPane !== "groceries";
-}));
+$$(".nav-item").forEach((item) => item.addEventListener("click", () => { state.view = item.dataset.view; state.mode = "list"; state.activeRecipe = null; syncViewUrl(item.dataset.view); closeMenu(); render(); }));
+$$("#plan-toggle .plan-toggle-btn").forEach((btn) => btn.addEventListener("click", () => setPlanPane(btn.dataset.pane)));
 $("#clear-made-button")?.addEventListener("click", () => { if (confirm("Clear all meals marked made?")) runPlanAction(async () => { await clearMadeMeals(); renderPlan(); }); });
 $("#start-new-week-button")?.addEventListener("click", () => { if (confirm("Start a new week? This clears made meals and checked-off grocery items.")) runPlanAction(async () => { await startNewWeek(); renderPlan(); renderGroceries(); }); });
 $("#add-meal-button")?.addEventListener("click", openAddMealModal);

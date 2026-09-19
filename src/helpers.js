@@ -200,6 +200,11 @@ const mockMode = queryParams.has("mock");
 // Permalink target parsed from ?recipe=<slug>. Opened on load (deep link) and
 // kept in sync as the drawer opens/closes so a shared recipe has a stable URL.
 const initialRecipeSlug = queryParams.get("recipe");
+// Permalink target for the nav views: ?view=<library|recent|pastry|plan> and,
+// for the plan view, ?pane=<plan|groceries>. Restored on load so a refresh
+// keeps your place instead of dropping to the library.
+const initialView = queryParams.get("view");
+const initialPane = queryParams.get("pane");
 const personalImageGallery = personalConfig.imagesBySourceUrl;
 const personalImageGalleryByTitle = personalConfig.imagesByTitle;
 
