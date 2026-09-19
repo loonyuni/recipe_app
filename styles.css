@@ -516,3 +516,74 @@ h1 em { color: var(--red); font-weight: 700; font-style: normal; }
 .add-photo { margin: 14px 0 4px; }
 .modal-photo { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
 .modal-photo .section-editor-label { flex: none; }
+
+/* Meal plan + grocery list (flat, ALL-CAPS labels, coral active states) */
+.plan-toggle { display: flex; gap: 0; margin-bottom: 18px; }
+.plan-toggle-btn {
+  font-family: var(--mono); text-transform: uppercase; letter-spacing: .05em; font-weight: 600;
+  border: 1px solid var(--rule); border-left-width: 0; background: var(--white); color: var(--ink);
+  padding: 8px 16px; font-size: 12px; cursor: pointer;
+}
+.plan-toggle-btn:first-child { border-left-width: 1px; }
+.plan-toggle-btn.is-active { background: var(--tint); color: var(--badge-ink); border-color: var(--tint); }
+
+.plan-actions { display: flex; align-items: center; gap: 10px; }
+
+/* Planned meals list */
+.planned-list { margin-bottom: 18px; }
+.planned-row {
+  display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--line);
+}
+.planned-row.is-made .planned-title { text-decoration: line-through; color: var(--muted); }
+.planned-made { accent-color: var(--tint); width: 16px; height: 16px; cursor: pointer; }
+.planned-title {
+  border: 0; background: transparent; text-align: left; padding: 0; margin: 0;
+  font: 500 18px var(--display); color: var(--ink); cursor: pointer;
+}
+.planned-day { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; border: 1px solid var(--line); border-radius: 0; background: var(--white); color: var(--muted); padding: 4px 6px; }
+.planned-remove { border: 0; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; padding: 0 4px; }
+.planned-remove:hover { color: var(--red-dark); }
+
+.plan-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 6px; }
+
+/* Add-meal modal results */
+.add-meal-results { max-height: 320px; overflow-y: auto; margin: 14px 0; border-top: 1px solid var(--line); }
+.add-meal-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  border: 0; border-bottom: 1px solid var(--line); background: transparent; padding: 10px 4px;
+  font: 15px var(--body); color: var(--read); cursor: pointer;
+}
+.add-meal-item.is-selected { background: var(--paper-deep); color: var(--ink); font-weight: 600; }
+.add-meal-time { margin-left: auto; font-family: var(--mono); text-transform: uppercase; letter-spacing: .04em; font-size: 11px; color: var(--muted); }
+
+/* Grocery list */
+.grocery-list { margin-bottom: 18px; }
+.grocery-group-head { font-family: var(--mono); text-transform: uppercase; letter-spacing: .08em; font-size: 11px; font-weight: 700; color: var(--muted); margin: 18px 0 6px; }
+.grocery-group:first-child .grocery-group-head { margin-top: 0; }
+.grocery-row {
+  display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px;
+  padding: 8px 0; border-bottom: 1px solid var(--line);
+}
+.grocery-row.status-got .grocery-label { text-decoration: line-through; color: var(--muted); }
+.grocery-check { accent-color: var(--tint); width: 16px; height: 16px; cursor: pointer; }
+.grocery-label { font: 16px var(--body); color: var(--read); }
+.grocery-manual { font-family: var(--mono); text-transform: uppercase; letter-spacing: .04em; font-size: 10px; color: var(--muted); }
+.grocery-have { border: 1px solid var(--line); background: var(--white); color: var(--muted); font-family: var(--mono); text-transform: uppercase; letter-spacing: .04em; font-size: 10px; padding: 4px 8px; cursor: pointer; }
+.grocery-have:hover { background: var(--paper-deep); }
+.grocery-remove { border: 0; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; padding: 0 4px; }
+.grocery-remove:hover { color: var(--red-dark); }
+
+/* Pantry staples editor */
+.staples-add-row { display: flex; gap: 10px; margin-bottom: 14px; }
+.staples-add-row input { flex: 1; font-family: var(--mono); border-radius: 0; background: var(--white); border: 1px solid var(--rule); padding: 8px 10px; }
+.staples-list { max-height: 280px; overflow-y: auto; }
+.staples-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); font: 15px var(--body); color: var(--read); }
+.staples-remove { padding: 5px 9px; font-size: 11px; }
+
+/* "＋ Plan" quick-add button on a recipe card */
+.card-plan {
+  font-family: var(--mono); text-transform: uppercase; font-weight: 600; font-size: 10px; letter-spacing: .05em;
+  border: 1px solid var(--line); background: var(--white); color: var(--ink); padding: 4px 7px; cursor: pointer;
+}
+.card-plan:hover { background: var(--paper-deep); border-color: var(--rule); }
