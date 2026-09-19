@@ -102,7 +102,7 @@ async function loadCloudRecipesInner() {
   state.recipes = (data || []).map(recipeFromRow);
   cloud.connected = true;
 
-  await loadPlanData();
+  try { await loadPlanData(); } catch (e) { console.error("loadPlanData failed", e); }
 
   for (const localRecipe of localCodexRecipes) {
     const duplicate = state.recipes.find((recipe) => normalizeRecipeTitle(recipe.title) === normalizeRecipeTitle(localRecipe.title));
@@ -290,6 +290,7 @@ async function replaceGrocery(merged) {
     household_id: cloud.householdId, item_key: m.item_key, display: m.display,
     status: m.status, manual: m.manual, sort_order: i, updated_at: new Date().toISOString()
   }));
+  if (!rows.length) { state.grocery = []; return; }
   const { data, error } = await cloud.client.from("grocery_items")
     .upsert(rows, { onConflict: "household_id,item_key" }).select();
   if (error) throw error;

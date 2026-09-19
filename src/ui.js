@@ -217,12 +217,14 @@ function renderRecipes() {
     card.addEventListener("click", () => showRecipe(card.dataset.id));
     card.addEventListener("keydown", (event) => { if (event.key === "Enter") showRecipe(card.dataset.id); });
   });
-  $$(".card-plan").forEach((btn) => btn.addEventListener("click", async (e) => {
+  $$(".card-plan").forEach((btn) => btn.addEventListener("click", (e) => {
     e.stopPropagation();
     const id = btn.dataset.planId;
     if (state.plannedMeals.some((m) => m.recipeId === id && !m.made)) { showToast("Already on this week's plan."); return; }
-    await addPlannedMeal(id);
-    showToast("Added to this week.");
+    runPlanAction(async () => {
+      await addPlannedMeal(id);
+      showToast("Added to this week.");
+    });
   }));
 }
 
@@ -249,6 +251,15 @@ function updateReadOnlyChrome() {
 }
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+// Run a plan/grocery mutation (add/update/remove against Supabase) and surface
+// any failure as a toast instead of letting it become a silent unhandled
+// rejection. The caller's re-render, if any, belongs inside `fn` so it only
+// runs after a successful await.
+async function runPlanAction(fn) {
+  try { await fn(); }
+  catch (e) { console.error(e); showToast("Something went wrong. Please try again."); }
+}
 
 // Render the "This week" meal list: unmade meals first (by sort order), made
 // meals sink to the bottom. Each row lets you jump to the recipe, set a day,
@@ -278,10 +289,10 @@ function renderPlan() {
   }).join("");
   $$(".planned-row", listEl).forEach((row) => {
     const id = row.dataset.mealId;
-    row.querySelector(".planned-made").addEventListener("change", async (e) => { await updatePlannedMeal(id, { made: e.target.checked }); renderPlan(); });
+    row.querySelector(".planned-made").addEventListener("change", (e) => runPlanAction(async () => { await updatePlannedMeal(id, { made: e.target.checked }); renderPlan(); }));
     row.querySelector(".planned-title").addEventListener("click", (e) => showRecipe(e.target.dataset.recipeId));
-    row.querySelector(".planned-day").addEventListener("change", async (e) => { await updatePlannedMeal(id, { day: e.target.value === "" ? null : Number(e.target.value) }); });
-    row.querySelector(".planned-remove").addEventListener("click", async () => { await removePlannedMeal(id); renderPlan(); });
+    row.querySelector(".planned-day").addEventListener("change", (e) => runPlanAction(async () => { await updatePlannedMeal(id, { day: e.target.value === "" ? null : Number(e.target.value) }); }));
+    row.querySelector(".planned-remove").addEventListener("click", () => runPlanAction(async () => { await removePlannedMeal(id); renderPlan(); }));
   });
 }
 
@@ -361,9 +372,9 @@ function renderGroceries() {
   listEl.innerHTML = html || `<p class="loading-note">Nothing to buy: generate from this week's meals, or all planned meals are made.</p>`;
   $$(".grocery-row", listEl).forEach((row) => {
     const id = row.dataset.groceryId;
-    row.querySelector(".grocery-check").addEventListener("change", async (e) => { await setGroceryStatus(id, e.target.checked ? "got" : "need"); renderGroceries(); });
-    row.querySelector(".grocery-have").addEventListener("click", async () => { await setGroceryStatus(id, "have"); renderGroceries(); });
-    row.querySelector(".grocery-remove").addEventListener("click", async () => { await clearGrocery((g) => g.id === id); renderGroceries(); });
+    row.querySelector(".grocery-check").addEventListener("change", (e) => runPlanAction(async () => { await setGroceryStatus(id, e.target.checked ? "got" : "need"); renderGroceries(); }));
+    row.querySelector(".grocery-have").addEventListener("click", () => runPlanAction(async () => { await setGroceryStatus(id, "have"); renderGroceries(); }));
+    row.querySelector(".grocery-remove").addEventListener("click", () => runPlanAction(async () => { await clearGrocery((g) => g.id === id); renderGroceries(); }));
   });
 }
 
@@ -380,7 +391,7 @@ function renderStaples() {
         <button type="button" class="danger-button staples-remove" data-remove="${escAttr(name)}">Remove</button>
       </div>`).join("")
     : `<p class="loading-note">No staples yet.</p>`;
-  $$(".staples-remove", listEl).forEach((btn) => btn.addEventListener("click", async () => { await removeStaple(btn.dataset.remove); renderStaples(); }));
+  $$(".staples-remove", listEl).forEach((btn) => btn.addEventListener("click", () => runPlanAction(async () => { await removeStaple(btn.dataset.remove); renderStaples(); })));
 }
 
 function render() {
@@ -1030,10 +1041,12 @@ function renderDetail(recipe) {
   $("#breadcrumb-home").addEventListener("click", showList);
   $$("#detail-view [data-related-id]").forEach((el) => el.addEventListener("click", () => showRecipe(el.dataset.relatedId)));
   $("#made-this-button")?.addEventListener("click", () => logCook(recipe));
-  $("#add-to-plan-button")?.addEventListener("click", async () => {
+  $("#add-to-plan-button")?.addEventListener("click", () => {
     if (state.plannedMeals.some((m) => m.recipeId === recipe.id && !m.made)) { showToast("Already on this week's plan."); return; }
-    await addPlannedMeal(recipe.id);
-    showToast("Added to this week.");
+    runPlanAction(async () => {
+      await addPlannedMeal(recipe.id);
+      showToast("Added to this week.");
+    });
   });
   $("#add-photo-button")?.addEventListener("click", () => $("#photo-input")?.click());
   $("#photo-input")?.addEventListener("change", (event) => {
@@ -1593,22 +1606,22 @@ $$("#plan-toggle .plan-toggle-btn").forEach((btn) => btn.addEventListener("click
   $("#plan-pane").hidden = state.planPane !== "plan";
   $("#grocery-pane").hidden = state.planPane !== "groceries";
 }));
-$("#clear-made-button")?.addEventListener("click", async () => { if (confirm("Clear all meals marked made?")) { await clearMadeMeals(); renderPlan(); } });
-$("#start-new-week-button")?.addEventListener("click", async () => { if (confirm("Start a new week? This clears made meals and checked-off grocery items.")) { await startNewWeek(); renderPlan(); renderGroceries(); } });
+$("#clear-made-button")?.addEventListener("click", () => { if (confirm("Clear all meals marked made?")) runPlanAction(async () => { await clearMadeMeals(); renderPlan(); }); });
+$("#start-new-week-button")?.addEventListener("click", () => { if (confirm("Start a new week? This clears made meals and checked-off grocery items.")) runPlanAction(async () => { await startNewWeek(); renderPlan(); renderGroceries(); }); });
 $("#add-meal-button")?.addEventListener("click", openAddMealModal);
 $("#add-meal-close")?.addEventListener("click", closeAddMealModal);
 $("#add-meal-modal")?.addEventListener("click", (e) => { if (e.target.id === "add-meal-modal") closeAddMealModal(); });
 $("#add-meal-search")?.addEventListener("input", (e) => renderAddMealResults(e.target.value));
-$("#add-meal-confirm")?.addEventListener("click", async () => {
+$("#add-meal-confirm")?.addEventListener("click", () => runPlanAction(async () => {
   for (const id of addMealSelection) await addPlannedMeal(id);
   closeAddMealModal();
   renderPlan();
   showToast(`Added ${addMealSelection.size} to this week.`);
-});
-$("#generate-grocery-button")?.addEventListener("click", generateGrocery);
-$("#add-grocery-button")?.addEventListener("click", async () => {
+}));
+$("#generate-grocery-button")?.addEventListener("click", () => runPlanAction(generateGrocery));
+$("#add-grocery-button")?.addEventListener("click", () => {
   const label = prompt("Add an item to the grocery list:");
-  if (label && label.trim()) { await addGroceryItem(label); renderGroceries(); }
+  if (label && label.trim()) runPlanAction(async () => { await addGroceryItem(label); renderGroceries(); });
 });
 $("#clear-got-button")?.addEventListener("click", async () => { await clearGrocery((g) => g.status === "got"); renderGroceries(); });
 $("#clear-all-grocery-button")?.addEventListener("click", async () => { if (confirm("Clear the whole grocery list?")) { await clearGrocery(() => true); renderGroceries(); } });
@@ -1616,7 +1629,7 @@ $("#staples-button")?.addEventListener("click", openStaples);
 $("#staples-close")?.addEventListener("click", closeStaples);
 $("#staples-done")?.addEventListener("click", closeStaples);
 $("#staples-modal")?.addEventListener("click", (e) => { if (e.target.id === "staples-modal") closeStaples(); });
-$("#staples-add")?.addEventListener("click", async () => { const v = $("#staples-input").value; if (v.trim()) { await addStaple(v); $("#staples-input").value = ""; renderStaples(); } });
+$("#staples-add")?.addEventListener("click", () => { const v = $("#staples-input").value; if (v.trim()) runPlanAction(async () => { await addStaple(v); $("#staples-input").value = ""; renderStaples(); }); });
 $("#staples-input")?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("#staples-add").click(); } });
 $("#recipe-form").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -1713,7 +1726,7 @@ $("#import-review-form").addEventListener("submit", (event) => {
   const saved = findDuplicateRecipe(recipe) || recipe;
   persistNewRecipe(recipe).then(async () => {
     if (addToPlan && saved.id) { await addPlannedMeal(saved.id); showToast("Saved and added to this week."); }
-  });
+  }).catch((e) => { console.error(e); showToast("Saved, but could not add to this week."); });
 });
 $("#copy-import-debug").addEventListener("click", async () => {
   const packet = JSON.stringify(state.lastImportDebug || {}, null, 2);
