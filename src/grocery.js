@@ -35,6 +35,29 @@ function parseUnitAndName(rest) {
   return { unit: "", name: text };
 }
 
+// Words ending in "s" that must not be singularized.
+const INVARIANT_PLURALS = new Set(["molasses", "hummus", "couscous", "asparagus", "peas", "oats", "greens"]);
+
+// Reduce an ingredient name to a stable grouping key: lowercase, drop
+// parentheticals and any prep clause after the first comma, strip a leading
+// article, remove punctuation, and singularize the last word heuristically.
+function normalizeIngredientName(text) {
+  let s = String(text == null ? "" : text).toLowerCase();
+  s = s.replace(/\([^)]*\)/g, " ");     // drop "(see Tip)" etc.
+  s = s.split(",")[0];                   // drop ", sliced"
+  s = s.replace(/^(?:a |an |the |of )+/, "");
+  s = s.replace(/[^a-z0-9\s-]/g, " ").replace(/\s+/g, " ").trim();
+  if (!s) return "";
+  const words = s.split(" ");
+  const last = words[words.length - 1];
+  if (last.length > 3 && !INVARIANT_PLURALS.has(last) && last.endsWith("s") && !last.endsWith("ss")) {
+    if (last.endsWith("ies")) words[words.length - 1] = last.slice(0, -3) + "y";
+    else if (/(?:o|s|x|z|ch|sh)es$/.test(last)) words[words.length - 1] = last.slice(0, -2);
+    else words[words.length - 1] = last.slice(0, -1);
+  }
+  return words.join(" ").trim();
+}
+
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { parseUnitAndName, UNIT_ALIASES };
+  module.exports = { parseUnitAndName, normalizeIngredientName, UNIT_ALIASES };
 }
