@@ -984,6 +984,7 @@ function showRecipe(id, { updateUrl = true } = {}) {
   const recipe = state.recipes.find((item) => item.id === id);
   if (!recipe) return;
   state.activeRecipe = recipe;
+  state.activeVariant = null;
   state.mode = "detail";
   drawerScale = 1;
   recordRecentView(recipe);
@@ -1094,7 +1095,14 @@ function renderDetail(recipe) {
     ${ratingFormHtml}
     <hr class="drawer-rule" />
     <h3 class="drawer-section-title">Your versions</h3>
-    ${recipe.variants.map((variant) => `<div class="variant-card"><strong>${esc(variant.name)}</strong><p>${esc(variant.note)}</p></div>`).join("")}
+    ${recipe.variants.map((variant) => `<div class="variant-card${state.activeVariant && state.activeVariant === variant.id ? " is-active" : ""}" data-variant-id="${escAttr(variant.id || "")}">
+      <strong>${esc(variant.name)}</strong><p>${esc(variant.note)}</p>
+      <div class="variant-actions">
+        ${variant.id ? `<button type="button" class="variant-link" data-variant-view="${escAttr(variant.id)}">View</button>` : ""}
+        ${variant.id ? `<button type="button" class="variant-link" data-variant-copy="${escAttr(variant.id)}">Copy link</button>` : ""}
+        ${editable && variant.id ? `<button type="button" class="variant-delete" data-variant-del="${escAttr(variant.id)}" aria-label="Delete variant">×</button>` : ""}
+      </div>
+    </div>`).join("")}
     ${variantAddHtml}`;
 
   const relatedList = relatedRecipes(recipe);
@@ -1252,7 +1260,21 @@ function renderDetail(recipe) {
       render();
     });
   }
-  $("#add-variant-button")?.addEventListener("click", () => showToast("Variant editing is next on the build list."));
+  $("#add-variant-button")?.addEventListener("click", () => openVariantModal(recipe));
+  $$("#detail-view [data-variant-view]").forEach((btn) => btn.addEventListener("click", () => focusVariant(recipe, btn.dataset.variantView)));
+  $$("#detail-view [data-variant-copy]").forEach((btn) => btn.addEventListener("click", async () => {
+    focusVariant(recipe, btn.dataset.variantCopy);
+    try { await navigator.clipboard.writeText(window.location.href); showToast("Variant link copied."); }
+    catch { showToast("Variant link is in the address bar."); }
+  }));
+  $$("#detail-view [data-variant-del]").forEach((btn) => btn.addEventListener("click", async () => {
+    if (!window.confirm("Delete this variant?")) return;
+    try {
+      if (state.activeVariant === btn.dataset.variantDel) state.activeVariant = null;
+      await deleteVariant(recipe, btn.dataset.variantDel);
+      render();
+    } catch (e) { console.error(e); showToast("Couldn't delete the variant."); }
+  }));
 }
 
 // Reflect the open recipe in the URL as ?recipe=<slug> (public recipes only).
@@ -1260,17 +1282,50 @@ function renderDetail(recipe) {
 // drops the param without stacking an extra history entry.
 function syncDrawerUrl(slug) {
   const url = new URL(window.location.href);
-  if (url.searchParams.get("recipe") === slug) return;
+  if (url.searchParams.get("recipe") === slug && !url.searchParams.has("variant")) return;
   url.searchParams.set("recipe", slug);
+  url.searchParams.delete("variant");
   window.history.pushState({ recipe: slug }, "", url);
 }
 
 function clearDrawerUrl() {
   const url = new URL(window.location.href);
-  if (!url.searchParams.has("recipe")) return;
+  if (!url.searchParams.has("recipe") && !url.searchParams.has("variant")) return;
   url.searchParams.delete("recipe");
+  url.searchParams.delete("variant");
   window.history.replaceState({}, "", url);
 }
+
+// Reflect the viewed variant as ?recipe=<slug>&variant=<id> (pushState so Back
+// returns to the plain recipe). Shareable to other household members.
+function syncVariantUrl(recipe, variantId) {
+  if (!recipe.slug) return;
+  const url = new URL(window.location.href);
+  url.searchParams.set("recipe", recipe.slug);
+  if (variantId) url.searchParams.set("variant", variantId); else url.searchParams.delete("variant");
+  window.history.pushState({ recipe: recipe.slug, variant: variantId || null }, "", url);
+}
+
+// View a variant: highlight its card, sync the URL, and scroll it into view.
+function focusVariant(recipe, variantId, { updateUrl = true } = {}) {
+  state.activeVariant = variantId;
+  if (updateUrl) syncVariantUrl(recipe, variantId);
+  if (state.mode === "detail" && state.activeRecipe === recipe) renderDetail(recipe);
+  requestAnimationFrame(() => {
+    const el = document.querySelector(`#detail-view .variant-card[data-variant-id="${variantId}"]`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+}
+
+let variantModalRecipe = null;
+function openVariantModal(recipe) {
+  variantModalRecipe = recipe;
+  const form = $("#variant-form");
+  if (form) form.reset();
+  $("#variant-modal").hidden = false;
+  $("#variant-name")?.focus();
+}
+function closeVariantModal() { $("#variant-modal").hidden = true; variantModalRecipe = null; }
 
 // Reflect the active nav view in the URL as ?view=<name> (library is the bare
 // URL). pushState so Back returns to the previous view; a refresh restores it.
@@ -1326,7 +1381,11 @@ window.addEventListener("popstate", async () => {
     recipe = await fetchPublicRecipeBySlug(slug);
     if (recipe) state.recipes = [recipe, ...state.recipes.filter((item) => item.id !== recipe.id)];
   }
-  if (recipe) showRecipe(recipe.id, { updateUrl: false });
+  if (recipe) {
+    showRecipe(recipe.id, { updateUrl: false });
+    const variantId = params.get("variant");
+    if (variantId) focusVariant(recipe, variantId, { updateUrl: false });
+  }
 });
 
 // --- Section editor (manual form + import review) ---------------------------
@@ -1797,6 +1856,21 @@ $("#staples-done")?.addEventListener("click", closeStaples);
 $("#staples-modal")?.addEventListener("click", (e) => { if (e.target.id === "staples-modal") closeStaples(); });
 $("#staples-add")?.addEventListener("click", () => { const v = $("#staples-input").value; if (v.trim()) runPlanAction(async () => { await addStaple(v); $("#staples-input").value = ""; renderStaples(); }); });
 $("#staples-input")?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("#staples-add").click(); } });
+$("#variant-close")?.addEventListener("click", closeVariantModal);
+$("#variant-cancel")?.addEventListener("click", closeVariantModal);
+$("#variant-modal")?.addEventListener("click", (e) => { if (e.target.id === "variant-modal") closeVariantModal(); });
+$("#variant-form")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const recipe = variantModalRecipe;
+  const name = $("#variant-name").value.trim();
+  if (!recipe || !name) return;
+  try {
+    await addVariant(recipe, name, $("#variant-note").value);
+    closeVariantModal();
+    render();
+    showToast("Variant added.");
+  } catch (err) { console.error(err); showToast("Couldn't add the variant."); }
+});
 $("#recipe-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const data = new FormData(event.target);
