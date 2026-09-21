@@ -195,6 +195,16 @@ async function loadCloudRecipesInner() {
         }
       }
     }
+    // Recipe variants (name + note tweaks), household-private.
+    const { data: variantRows } = await cloud.client
+      .from("recipe_variants")
+      .select("id, recipe_id, name, note")
+      .in("recipe_id", recipeIds);
+    const variantsByRecipe = new Map(recipeIds.map((id) => [id, []]));
+    (variantRows || []).forEach((v) => {
+      variantsByRecipe.get(v.recipe_id)?.push({ id: v.id, name: v.name, note: v.note || "" });
+    });
+    state.recipes.forEach((recipe) => { recipe.variants = variantsByRecipe.get(recipe.id) || []; });
     const { data: recipeTags, error: tagsError } = await cloud.client
       .from("recipe_tags")
       .select("recipe_id, tags(name)")
@@ -472,8 +482,10 @@ async function openInitialSharedRecipe() {
       render();
     }
   }
-  if (recipe) showRecipe(recipe.id, { updateUrl: false });
-  else showToast("That shared recipe isn't available.");
+  if (recipe) {
+    showRecipe(recipe.id, { updateUrl: false });
+    if (initialVariant) focusVariant(recipe, initialVariant, { updateUrl: false });
+  } else showToast("That shared recipe isn't available.");
 }
 
 // Persist a recipe's tags to the tags/recipe_tags tables: ensure a tag row
@@ -620,6 +632,32 @@ async function saveRatingToCloud(recipe, rating) {
     cooked_at: new Date().toISOString().slice(0, 10)
   });
   if (error) throw error;
+}
+
+// Add a variant (name + note) to a recipe, household-private. Returns the new
+// variant ({id, name, note}) and appends it to recipe.variants.
+async function addVariant(recipe, name, note) {
+  if (!cloud.connected || !cloud.client || !cloud.householdId || !recipe.id) return null;
+  const { data, error } = await cloud.client.from("recipe_variants").insert({
+    recipe_id: recipe.id,
+    name: String(name).trim(),
+    note: String(note || "").trim(),
+    created_by: cloud.session?.user?.id || null
+  }).select("id, name, note").single();
+  if (error) throw error;
+  const variant = { id: data.id, name: data.name, note: data.note || "" };
+  recipe.variants = [...(recipe.variants || []), variant];
+  return variant;
+}
+
+async function deleteVariant(recipe, variantId) {
+  if (!cloud.connected || !cloud.client || !recipe.id) return;
+  const { error } = await cloud.client.from("recipe_variants")
+    .delete()
+    .eq("id", variantId)
+    .eq("recipe_id", recipe.id);
+  if (error) throw error;
+  recipe.variants = (recipe.variants || []).filter((v) => v.id !== variantId);
 }
 
 function showAuthError(message) {

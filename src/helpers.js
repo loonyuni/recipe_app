@@ -149,6 +149,7 @@ const state = {
   booting: false, // true until the first cloud/public load resolves (avoids a seed-recipe flash)
   minRating: 0, // minimum-rating filter (0 = off)
   activeRecipe: null,
+  activeVariant: null,
   editingRecipeId: null,
   activeImportDraft: null,
   plannedMeals: [],
@@ -205,6 +206,9 @@ const initialRecipeSlug = queryParams.get("recipe");
 // keeps your place instead of dropping to the library.
 const initialView = queryParams.get("view");
 const initialPane = queryParams.get("pane");
+// Permalink target for a specific variant: ?recipe=<slug>&variant=<id>. Opened
+// alongside the recipe so a variant is directly shareable.
+const initialVariant = queryParams.get("variant");
 const personalImageGallery = personalConfig.imagesBySourceUrl;
 const personalImageGalleryByTitle = personalConfig.imagesByTitle;
 
