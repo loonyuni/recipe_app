@@ -486,11 +486,44 @@ function renderStaples() {
   $$(".staples-remove", listEl).forEach((btn) => btn.addEventListener("click", () => runPlanAction(async () => { await removeStaple(btn.dataset.remove); renderStaples(); })));
 }
 
+// --- First-run onboarding hint ---------------------------------------------
+const FIRST_SEEN_KEY = "kitchen-archive-first-seen";
+const DISMISSED_HINTS_KEY = "kitchen-archive-dismissed-hints";
+// Capture whether this is a brand-new device BEFORE stamping it, so the hint
+// shows this session and never again for a recognized return visitor.
+const firstVisitThisSession = !(typeof localStorage !== "undefined" && localStorage.getItem(FIRST_SEEN_KEY));
+try { if (firstVisitThisSession) localStorage.setItem(FIRST_SEEN_KEY, new Date().toISOString()); } catch { /* private mode: no-op */ }
+function dismissedHints() {
+  try { return new Set(JSON.parse(localStorage.getItem(DISMISSED_HINTS_KEY) || "[]")); } catch { return new Set(); }
+}
+function dismissHint(id) {
+  try { const s = dismissedHints(); s.add(id); localStorage.setItem(DISMISSED_HINTS_KEY, JSON.stringify([...s])); } catch { /* private mode */ }
+}
+
+// A one-time, dismissible tip for new household members that points at the
+// non-obvious flow (plan a week, then generate a grocery list). Only shown to
+// signed-in members, on the library view, on a first visit to this device.
+function renderOnboardingHint() {
+  const el = $("#intro-hint");
+  if (!el) return;
+  const show = firstVisitThisSession && cloud.connected && state.view === "library"
+    && state.mode !== "detail" && !dismissedHints().has("welcome");
+  el.hidden = !show;
+  if (!show) { el.innerHTML = ""; return; }
+  el.innerHTML = `
+    <span class="intro-hint-text">Welcome! Plan meals under <strong>This week</strong>, then press Generate to build a grocery list of just what you need.</span>
+    <button type="button" class="intro-hint-cta" id="intro-hint-go">Show me</button>
+    <button type="button" class="intro-hint-close" id="intro-hint-dismiss" aria-label="Dismiss">×</button>`;
+  $("#intro-hint-go").addEventListener("click", () => { dismissHint("welcome"); state.view = "plan"; state.mode = "list"; syncViewUrl("plan"); render(); });
+  $("#intro-hint-dismiss").addEventListener("click", () => { dismissHint("welcome"); renderOnboardingHint(); });
+}
+
 function render() {
   renderLabels();
   renderFilters();
   updateReadOnlyChrome();
   renderRecentlyViewed();
+  renderOnboardingHint();
   const detail = state.mode === "detail" && state.activeRecipe;
   // The "This week" plan is household-only (spec §F): a signed-out visitor
   // never has a household, so stale/shared state pointing at it falls back to
