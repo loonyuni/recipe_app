@@ -18,7 +18,7 @@
       href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260921-variants" />
+    <link rel="stylesheet" href="styles.css?v=20260923-variant-tabs" />
   </head>
   <body>
     <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -428,17 +428,35 @@
     </div>
 
     <div id="variant-modal" class="modal-backdrop" hidden>
-      <section class="modal" aria-labelledby="variant-title">
+      <section class="modal" aria-labelledby="variant-modal-title">
         <button class="modal-close" id="variant-close" aria-label="Close">×</button>
         <p class="eyebrow">Your versions</p>
-        <h2 id="variant-title">Add a variant</h2>
-        <p class="modal-intro">A tweak you make to this recipe, like "Extra spicy" or "Hosting version".</p>
+        <h2 id="variant-modal-title">Add a version</h2>
+        <p class="modal-intro">A full alternate version of this recipe, like "Extra spicy" or "Vegan". Starts as a copy of the original so you can tweak it.</p>
         <form id="variant-form">
           <label>Name<input id="variant-name" name="name" required placeholder="e.g. Extra spicy" /></label>
-          <label>Note<textarea id="variant-note" name="note" rows="3" placeholder="What you change and why…"></textarea></label>
+          <label>Note (optional)<textarea id="variant-note" name="note" rows="2" placeholder="What's different about this version…"></textarea></label>
+          <div class="form-grid">
+            <label>Time<input id="variant-time" name="time" type="number" min="0" placeholder="45" /></label>
+            <label>Serves<input id="variant-servings" name="servings" type="number" min="1" placeholder="4" /></label>
+          </div>
+          <div class="form-grid form-grid-4">
+            <label>Calories<input id="variant-calories" type="number" min="0" placeholder="0" /></label>
+            <label>Protein g<input id="variant-protein" type="number" min="0" placeholder="0" /></label>
+            <label>Carbs g<input id="variant-carbs" type="number" min="0" placeholder="0" /></label>
+            <label>Fat g<input id="variant-fat" type="number" min="0" placeholder="0" /></label>
+          </div>
+          <div class="section-editor" id="variant-section-editor" data-section-editor>
+            <div class="section-editor-label-row">
+              <span class="section-editor-label">Ingredients &amp; method</span>
+              <span class="field-note">One line per ingredient / step. Edit the copied original to make your tweaks.</span>
+            </div>
+            <div class="section-editor-cards"></div>
+            <button type="button" class="ghost-button section-editor-add">＋ Add section</button>
+          </div>
           <div class="form-actions">
             <button type="button" class="ghost-button" id="variant-cancel">Cancel</button>
-            <button type="submit" class="primary-button">Save variant</button>
+            <button type="submit" class="primary-button">Save version</button>
           </div>
         </form>
       </section>
@@ -477,9 +495,9 @@
     <div id="toast" class="toast" role="status"></div>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="supabase-config.js"></script>
-  <script src="src/helpers.js?v=20260921-variants"></script>
-  <script src="src/grocery.js?v=20260921-variants"></script>
-  <script src="src/data.js?v=20260921-variants"></script>
-  <script src="src/ui.js?v=20260921-variants"></script>
+  <script src="src/helpers.js?v=20260923-variant-tabs"></script>
+  <script src="src/grocery.js?v=20260923-variant-tabs"></script>
+  <script src="src/data.js?v=20260923-variant-tabs"></script>
+  <script src="src/ui.js?v=20260923-variant-tabs"></script>
   </body>
 </html>

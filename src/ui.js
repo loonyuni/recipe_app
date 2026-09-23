@@ -675,11 +675,35 @@ function auditLabels() {
 // to 1x whenever a drawer is (re)opened so scaling doesn't leak between recipes.
 let drawerScale = 1;
 
+// The version currently shown in the detail view: the base recipe, or, when a
+// variant tab is active, the variant merged over the recipe for the swappable
+// fields (ingredients, instructions, time, servings, nutrition). Title,
+// description, photos, tags, and ratings always come from the base recipe.
+function activeVersion() {
+  const recipe = state.activeRecipe;
+  if (!recipe) return null;
+  const v = state.activeVariant && (recipe.variants || []).find((x) => x.id === state.activeVariant);
+  if (!v) return recipe;
+  return {
+    ...recipe,
+    sections: undefined,
+    ingredientRecords: undefined,
+    ingredients: (v.ingredients && v.ingredients.length) ? v.ingredients : recipe.ingredients,
+    instructions: (v.instructions && v.instructions.length) ? v.instructions : recipe.instructions,
+    time: (v.time == null || v.time === "") ? recipe.time : v.time,
+    servings: (v.servings == null || v.servings === "") ? recipe.servings : v.servings,
+    calories: v.calories || recipe.calories,
+    protein: v.protein || recipe.protein,
+    carbs: v.carbs || recipe.carbs,
+    fat: v.fat || recipe.fat
+  };
+}
+
 // Re-render every scale-dependent piece of the open drawer: the editable
 // ingredient quantities, the servings/factor summary, and the per-batch
 // nutrition total. Called on open and after every scale change.
 function applyDrawerScaling() {
-  const recipe = state.activeRecipe;
+  const recipe = activeVersion();
   if (!recipe) return;
   const factor = drawerScale;
   const sections = getSections(recipe);
@@ -739,7 +763,7 @@ function onIngredientQtyChange(event) {
 // User typed a target serving count. Derive the scale factor from the recipe's
 // base servings, then rescale every ingredient (and nutrition) to match.
 function onServingsChange(event) {
-  const recipe = state.activeRecipe;
+  const recipe = activeVersion();
   if (!recipe) return;
   const base = Number(recipe.servings) || 0;
   const parsed = parseLeadingQuantity(event.target.value);
@@ -1029,7 +1053,28 @@ function renderDetail(recipe) {
   // section's ingredient list through the same global factor. The ingredient
   // <ul>s are filled by applyDrawerScaling (keyed by data-section); the method
   // lists are static (instructions don't scale).
-  const sections = getSections(recipe);
+  const version = activeVersion() || recipe;
+  const sections = getSections(version);
+  const variants = recipe.variants || [];
+  const activeV = state.activeVariant ? variants.find((v) => v.id === state.activeVariant) : null;
+  // Version tabs: Original + one per variant, swapping the ingredients/method/
+  // time/servings/nutrition below. Owner also gets a "+" to add a version, and
+  // per-version edit/delete/copy-link actions.
+  const versionTabsHtml = (variants.length || editable) ? `
+    <hr class="drawer-rule" />
+    <div class="version-tabs" role="tablist">
+      <button type="button" class="version-tab${!activeV ? " is-active" : ""}" data-version="original">Original</button>
+      ${variants.map((v) => `<button type="button" class="version-tab${activeV && activeV.id === v.id ? " is-active" : ""}" data-version="${escAttr(v.id)}">${esc(v.name)}</button>`).join("")}
+      ${editable ? `<button type="button" class="version-tab version-tab-add" id="add-variant-button" title="Add a version" aria-label="Add a version">＋</button>` : ""}
+    </div>
+    ${activeV ? `<div class="version-meta">
+      ${activeV.note ? `<p class="version-note">${esc(activeV.note)}</p>` : ""}
+      <div class="version-actions">
+        <button type="button" class="variant-link" data-variant-copy="${escAttr(activeV.id)}">Copy link</button>
+        ${editable ? `<button type="button" class="variant-link" data-variant-edit="${escAttr(activeV.id)}">Edit this version</button>` : ""}
+        ${editable ? `<button type="button" class="variant-link variant-link-danger" data-variant-del="${escAttr(activeV.id)}">Delete</button>` : ""}
+      </div>
+    </div>` : ""}` : "";
   const scalePanelHtml = `
     <div class="scale-panel">
       <div class="scale-controls" id="scale-controls">
@@ -1084,26 +1129,14 @@ function renderDetail(recipe) {
       <input name="comment" placeholder="Optional note" aria-label="Rating note" />
       <button class="ghost-button" type="submit">Save rating</button>
     </form>` : "";
-  const variantAddHtml = editable
-    ? `<button class="ghost-button" style="margin-top:14px" id="add-variant-button">＋ Add a variant</button>`
-    : "";
+  // Variants render as tabs above the ingredients (versionTabsHtml); this block
+  // is just family ratings now.
   const householdExtrasHtml = recipe.foreign ? "" : `
     <hr class="drawer-rule" />
     <h3 class="drawer-section-title">Family ratings · ★ ${averageRating(recipe).toFixed(1)} overall</h3>
     <div class="family-rating">${ratings.map((rating) => `
       <div class="member-rating"><span class="member-name">${esc(rating.member)}</span><span class="stars">${ratingStars(rating.score)}</span><span class="member-score">${(Number(rating.score) || 0).toFixed(1)}</span></div>`).join("")}</div>
-    ${ratingFormHtml}
-    <hr class="drawer-rule" />
-    <h3 class="drawer-section-title">Your versions</h3>
-    ${recipe.variants.map((variant) => `<div class="variant-card${state.activeVariant && state.activeVariant === variant.id ? " is-active" : ""}" data-variant-id="${escAttr(variant.id || "")}">
-      <strong>${esc(variant.name)}</strong><p>${esc(variant.note)}</p>
-      <div class="variant-actions">
-        ${variant.id ? `<button type="button" class="variant-link" data-variant-view="${escAttr(variant.id)}">View</button>` : ""}
-        ${variant.id ? `<button type="button" class="variant-link" data-variant-copy="${escAttr(variant.id)}">Copy link</button>` : ""}
-        ${editable && variant.id ? `<button type="button" class="variant-delete" data-variant-del="${escAttr(variant.id)}" aria-label="Delete variant">×</button>` : ""}
-      </div>
-    </div>`).join("")}
-    ${variantAddHtml}`;
+    ${ratingFormHtml}`;
 
   const relatedList = relatedRecipes(recipe);
   const relatedHtml = relatedList.length ? `
@@ -1154,15 +1187,16 @@ function renderDetail(recipe) {
       <input type="file" id="photo-input" accept="image/*" hidden />
     </div>` : ""}
     <div class="drawer-tags">${recipe.tags.map((tag) => `<span class="drawer-tag">${esc(tag)}</span>`).join("")}</div>
-    <div class="card-meta"><span><svg class="icon"><use href="#i-clock"/></svg> ${esc(formatTimeLabel(recipe.time))}</span><span>${esc(recipe.servings)} servings</span>${recipe.foreign ? "" : `<span>★ ${averageRating(recipe).toFixed(1)} household</span>`}</div>
+    ${versionTabsHtml}
+    <div class="card-meta"><span><svg class="icon"><use href="#i-clock"/></svg> ${esc(formatTimeLabel(version.time))}</span><span>${esc(version.servings)} servings</span>${recipe.foreign ? "" : `<span>★ ${averageRating(recipe).toFixed(1)} household</span>`}</div>
     <hr class="drawer-rule" />
     <h3 class="drawer-section-title">Nutrition per serving</h3>
-    ${hasNutrition(recipe) ? `
+    ${hasNutrition(version) ? `
     <div class="nutrition-strip">
-      <div class="nutrition-cell"><span class="nutrition-value">${esc(recipe.calories)}</span><span class="nutrition-label">kcal</span></div>
-      <div class="nutrition-cell"><span class="nutrition-value">${esc(recipe.protein)} g</span><span class="nutrition-label">protein</span></div>
-      <div class="nutrition-cell"><span class="nutrition-value">${esc(recipe.carbs)} g</span><span class="nutrition-label">carbs</span></div>
-      <div class="nutrition-cell"><span class="nutrition-value">${esc(recipe.fat)} g</span><span class="nutrition-label">fat</span></div>
+      <div class="nutrition-cell"><span class="nutrition-value">${esc(version.calories)}</span><span class="nutrition-label">kcal</span></div>
+      <div class="nutrition-cell"><span class="nutrition-value">${esc(version.protein)} g</span><span class="nutrition-label">protein</span></div>
+      <div class="nutrition-cell"><span class="nutrition-value">${esc(version.carbs)} g</span><span class="nutrition-label">carbs</span></div>
+      <div class="nutrition-cell"><span class="nutrition-value">${esc(version.fat)} g</span><span class="nutrition-label">fat</span></div>
     </div>
     <p class="batch-total" id="batch-total"></p>
     <p class="source-line">Nutrition is an estimate · <strong>medium confidence</strong></p>
@@ -1261,19 +1295,34 @@ function renderDetail(recipe) {
     });
   }
   $("#add-variant-button")?.addEventListener("click", () => openVariantModal(recipe));
-  $$("#detail-view [data-variant-view]").forEach((btn) => btn.addEventListener("click", () => focusVariant(recipe, btn.dataset.variantView)));
+  $$("#detail-view .version-tab[data-version]").forEach((btn) => btn.addEventListener("click", () => {
+    const v = btn.dataset.version;
+    if (v === "original") {
+      state.activeVariant = null;
+      drawerScale = 1;
+      syncVariantUrl(recipe, null);
+      renderDetail(recipe);
+    } else {
+      focusVariant(recipe, v);
+    }
+  }));
+  $$("#detail-view [data-variant-edit]").forEach((btn) => btn.addEventListener("click", () => {
+    const v = (recipe.variants || []).find((x) => x.id === btn.dataset.variantEdit);
+    if (v) openVariantModal(recipe, v);
+  }));
   $$("#detail-view [data-variant-copy]").forEach((btn) => btn.addEventListener("click", async () => {
     focusVariant(recipe, btn.dataset.variantCopy);
-    try { await navigator.clipboard.writeText(window.location.href); showToast("Variant link copied."); }
-    catch { showToast("Variant link is in the address bar."); }
+    try { await navigator.clipboard.writeText(window.location.href); showToast("Version link copied."); }
+    catch { showToast("Version link is in the address bar."); }
   }));
   $$("#detail-view [data-variant-del]").forEach((btn) => btn.addEventListener("click", async () => {
-    if (!window.confirm("Delete this variant?")) return;
+    if (!window.confirm("Delete this version?")) return;
     try {
-      if (state.activeVariant === btn.dataset.variantDel) state.activeVariant = null;
+      if (state.activeVariant === btn.dataset.variantDel) { state.activeVariant = null; drawerScale = 1; }
       await deleteVariant(recipe, btn.dataset.variantDel);
+      syncVariantUrl(recipe, null);
       render();
-    } catch (e) { console.error(e); showToast("Couldn't delete the variant."); }
+    } catch (e) { console.error(e); showToast("Couldn't delete the version."); }
   }));
 }
 
@@ -1306,26 +1355,44 @@ function syncVariantUrl(recipe, variantId) {
   window.history.pushState({ recipe: recipe.slug, variant: variantId || null }, "", url);
 }
 
-// View a variant: highlight its card, sync the URL, and scroll it into view.
+// Select a variant version: swap the detail body to it, reset the scale, sync
+// the shareable URL, and bring the version tabs into view.
 function focusVariant(recipe, variantId, { updateUrl = true } = {}) {
   state.activeVariant = variantId;
+  drawerScale = 1;
   if (updateUrl) syncVariantUrl(recipe, variantId);
   if (state.mode === "detail" && state.activeRecipe === recipe) renderDetail(recipe);
   requestAnimationFrame(() => {
-    const el = document.querySelector(`#detail-view .variant-card[data-variant-id="${variantId}"]`);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    const el = document.querySelector("#detail-view .version-tabs");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 }
 
 let variantModalRecipe = null;
-function openVariantModal(recipe) {
+let variantModalId = null;
+// Open the variant editor. No variant = add (prefilled from the original so you
+// tweak a copy); a variant = edit that version.
+function openVariantModal(recipe, variant = null) {
   variantModalRecipe = recipe;
-  const form = $("#variant-form");
-  if (form) form.reset();
+  variantModalId = variant ? variant.id : null;
+  const src = variant || recipe;
+  $("#variant-modal-title").textContent = variant ? "Edit version" : "Add a version";
+  $("#variant-name").value = variant ? variant.name : "";
+  $("#variant-note").value = variant ? (variant.note || "") : "";
+  $("#variant-time").value = (src.time == null || src.time === "") ? "" : src.time;
+  $("#variant-servings").value = (src.servings == null || src.servings === "") ? "" : src.servings;
+  $("#variant-calories").value = src.calories || "";
+  $("#variant-protein").value = src.protein || "";
+  $("#variant-carbs").value = src.carbs || "";
+  $("#variant-fat").value = src.fat || "";
+  const sections = variant
+    ? [{ title: "", ingredients: variant.ingredients || [], instructions: variant.instructions || [] }]
+    : getSections(recipe);
+  setupSectionEditor($("#variant-section-editor"), sections);
   $("#variant-modal").hidden = false;
-  $("#variant-name")?.focus();
+  setTimeout(() => $("#variant-name").focus(), 0);
 }
-function closeVariantModal() { $("#variant-modal").hidden = true; variantModalRecipe = null; }
+function closeVariantModal() { $("#variant-modal").hidden = true; variantModalRecipe = null; variantModalId = null; }
 
 // Reflect the active nav view in the URL as ?view=<name> (library is the bare
 // URL). pushState so Back returns to the previous view; a refresh restores it.
@@ -1864,12 +1931,29 @@ $("#variant-form")?.addEventListener("submit", async (e) => {
   const recipe = variantModalRecipe;
   const name = $("#variant-name").value.trim();
   if (!recipe || !name) return;
+  // Flatten the section editor into the variant's flat ingredient/instruction
+  // arrays (variants are a single untitled section).
+  const secs = normalizeSections(readSectionEditor($("#variant-section-editor"))) || [];
+  const ingredients = secs.flatMap((s) => (s.title ? [`${s.title}:`] : []).concat(s.ingredients));
+  const instructions = secs.flatMap((s) => s.instructions);
+  const num = (id) => { const v = $(id).value.trim(); return v === "" ? null : Number(v); };
+  const editingId = variantModalId;
   try {
-    await addVariant(recipe, name, $("#variant-note").value);
+    const saved = await saveVariant(recipe, {
+      id: editingId,
+      name,
+      note: $("#variant-note").value,
+      ingredients,
+      instructions,
+      time: num("#variant-time"),
+      servings: num("#variant-servings"),
+      nutrition: { calories: num("#variant-calories") || 0, protein: num("#variant-protein") || 0, carbs: num("#variant-carbs") || 0, fat: num("#variant-fat") || 0 }
+    });
     closeVariantModal();
+    if (saved) { state.activeVariant = saved.id; drawerScale = 1; syncVariantUrl(recipe, saved.id); }
     render();
-    showToast("Variant added.");
-  } catch (err) { console.error(err); showToast("Couldn't add the variant."); }
+    showToast(editingId ? "Version saved." : "Version added.");
+  } catch (err) { console.error(err); showToast("Couldn't save the version."); }
 });
 $("#recipe-form").addEventListener("submit", (event) => {
   event.preventDefault();

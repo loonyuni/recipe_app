@@ -195,15 +195,13 @@ async function loadCloudRecipesInner() {
         }
       }
     }
-    // Recipe variants (name + note tweaks), household-private.
+    // Recipe variants (full alternate versions), household-private.
     const { data: variantRows } = await cloud.client
       .from("recipe_variants")
-      .select("id, recipe_id, name, note")
+      .select("id, recipe_id, name, note, ingredients, instructions, time_minutes, servings, nutrition")
       .in("recipe_id", recipeIds);
     const variantsByRecipe = new Map(recipeIds.map((id) => [id, []]));
-    (variantRows || []).forEach((v) => {
-      variantsByRecipe.get(v.recipe_id)?.push({ id: v.id, name: v.name, note: v.note || "" });
-    });
+    (variantRows || []).forEach((v) => variantsByRecipe.get(v.recipe_id)?.push(variantFromRow(v)));
     state.recipes.forEach((recipe) => { recipe.variants = variantsByRecipe.get(recipe.id) || []; });
     const { data: recipeTags, error: tagsError } = await cloud.client
       .from("recipe_tags")
@@ -634,18 +632,53 @@ async function saveRatingToCloud(recipe, rating) {
   if (error) throw error;
 }
 
-// Add a variant (name + note) to a recipe, household-private. Returns the new
-// variant ({id, name, note}) and appends it to recipe.variants.
-async function addVariant(recipe, name, note) {
+// Map a recipe_variants row to the in-memory variant shape (nutrition flattened
+// like a recipe, ingredients/instructions as plain string arrays).
+function variantFromRow(v) {
+  const n = v.nutrition || {};
+  return {
+    id: v.id,
+    name: v.name,
+    note: v.note || "",
+    ingredients: Array.isArray(v.ingredients) ? v.ingredients : [],
+    instructions: Array.isArray(v.instructions) ? v.instructions : [],
+    time: v.time_minutes == null ? null : v.time_minutes,
+    servings: v.servings == null ? null : v.servings,
+    calories: Number(n.calories) || 0,
+    protein: Number(n.protein) || 0,
+    carbs: Number(n.carbs) || 0,
+    fat: Number(n.fat) || 0
+  };
+}
+
+// Create or update a variant (full alternate version), household-private.
+// `patch` carries name, note, ingredients[], instructions[], time, servings,
+// nutrition{}; an `id` means update, otherwise insert. Returns the variant.
+async function saveVariant(recipe, patch) {
   if (!cloud.connected || !cloud.client || !cloud.householdId || !recipe.id) return null;
-  const { data, error } = await cloud.client.from("recipe_variants").insert({
-    recipe_id: recipe.id,
-    name: String(name).trim(),
-    note: String(note || "").trim(),
-    created_by: cloud.session?.user?.id || null
-  }).select("id, name, note").single();
+  const toInt = (x) => (x === "" || x == null || !Number.isFinite(Number(x))) ? null : Math.round(Number(x));
+  const row = {
+    name: String(patch.name).trim(),
+    note: String(patch.note || "").trim(),
+    ingredients: patch.ingredients || [],
+    instructions: patch.instructions || [],
+    time_minutes: toInt(patch.time),
+    servings: toInt(patch.servings),
+    nutrition: patch.nutrition || {}
+  };
+  if (patch.id) {
+    const { error } = await cloud.client.from("recipe_variants").update(row).eq("id", patch.id).eq("recipe_id", recipe.id);
+    if (error) throw error;
+    const updated = variantFromRow({ id: patch.id, ...row });
+    recipe.variants = (recipe.variants || []).map((v) => (v.id === patch.id ? updated : v));
+    return updated;
+  }
+  const { data, error } = await cloud.client.from("recipe_variants")
+    .insert({ recipe_id: recipe.id, created_by: cloud.session?.user?.id || null, ...row })
+    .select("id, name, note, ingredients, instructions, time_minutes, servings, nutrition")
+    .single();
   if (error) throw error;
-  const variant = { id: data.id, name: data.name, note: data.note || "" };
+  const variant = variantFromRow(data);
   recipe.variants = [...(recipe.variants || []), variant];
   return variant;
 }
