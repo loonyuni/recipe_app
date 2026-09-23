@@ -200,6 +200,14 @@ h2 span { color: var(--muted); font: 400 11px var(--mono); vertical-align: middl
 .variant-link { border: 0; background: transparent; padding: 0; color: var(--red); font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .05em; cursor: pointer; }
 .variant-link:hover { color: var(--red-dark); }
 .variant-delete { margin-left: auto; border: 0; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; }
+.variant-link-danger { color: var(--red-dark); }
+.version-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+.version-tab { border: 1px solid var(--line); background: transparent; padding: 6px 12px; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); cursor: pointer; }
+.version-tab.is-active { background: var(--tint); color: var(--badge-ink); border-color: var(--tint); }
+.version-tab-add { color: var(--red); font-size: 14px; padding: 6px 10px; }
+.version-meta { margin: 0 0 12px; }
+.version-note { margin: 0 0 8px; color: var(--muted); font-size: 13px; font-family: var(--body); }
+.version-actions { display: flex; gap: 14px; align-items: center; }
 .family-rating { display: grid; gap: 9px; }
 .rating-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 15px; padding: 12px; background: #f8f1e5; }
 .rating-form input, .rating-form select { min-width: 0; padding: 9px; border: 1px solid var(--line); background: var(--white); color: var(--ink); font-size: 11px; }
@@ -289,6 +297,7 @@ h2 span { color: var(--muted); font: 400 11px var(--mono); vertical-align: middl
 .modal input, .modal textarea { width: 100%; padding: 11px 12px; resize: vertical; border: 1px solid var(--line); border-radius: 3px; color: var(--ink); background: var(--paper); font: 13px var(--body); text-transform: none; letter-spacing: 0; }
 .modal input:focus, .modal textarea:focus { border-color: var(--red); outline: 0; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+.form-grid-4 { grid-template-columns: repeat(4, 1fr); }
 .form-actions { display: flex; justify-content: end; gap: 10px; padding-top: 7px; }
 .filter-popover { position: fixed; z-index: 20; width: 220px; padding: 17px; background: var(--white); border: 1px solid var(--line); box-shadow: var(--shadow); }
 .filter-popover button { display: block; width: 100%; padding: 8px 5px; border: 0; background: transparent; color: var(--ink); text-align: left; font-size: 12px; }
