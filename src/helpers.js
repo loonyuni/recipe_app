@@ -150,6 +150,7 @@ const state = {
   minRating: 0, // minimum-rating filter (0 = off)
   activeRecipe: null,
   activeVariant: null,
+  measureMode: "us",
   editingRecipeId: null,
   activeImportDraft: null,
   plannedMeals: [],
@@ -350,6 +351,76 @@ function scaleIngredient(text, factor) {
     scaledValue,
     rest: parsed.rest
   };
+}
+
+// --- Metric conversion (US volume -> grams/ml) ------------------------------
+// A recipe often has grams/ml inline in parentheses (from the source); where it
+// does not, a small density table converts common baking staples. Liquids
+// convert by volume to ml; solids by density to grams. Unknowns stay imperial.
+const CUP_ML = 236.588, VOLUME_TO_CUP = { cup: 1, cups: 1, c: 1, tbsp: 1 / 16, tbsps: 1 / 16, tablespoon: 1 / 16, tablespoons: 1 / 16, tbs: 1 / 16, tsp: 1 / 48, tsps: 1 / 48, teaspoon: 1 / 48, teaspoons: 1 / 48 };
+// Grams per US cup for common solids (longest matching name wins).
+const SOLID_G_PER_CUP = {
+  "all-purpose flour": 125, "all purpose flour": 125, "bread flour": 127, "cake flour": 114, "whole wheat flour": 120, "flour": 125,
+  "confectioners sugar": 120, "powdered sugar": 120, "icing sugar": 120, "brown sugar": 213, "granulated sugar": 200, "caster sugar": 200, "sugar": 200,
+  "unsalted butter": 227, "butter": 227,
+  "cocoa powder": 85, "cocoa": 85, "cornstarch": 128, "cornflour": 128, "rolled oats": 90, "oats": 90,
+  "kosher salt": 240, "table salt": 288, "sea salt": 288, "salt": 288,
+  "baking powder": 192, "baking soda": 220,
+  "pumpkin pie spice": 120, "ground cinnamon": 132, "cinnamon": 132, "nutmeg": 120, "ground ginger": 96
+};
+const LIQUID_KEYWORDS = ["water", "milk", "buttermilk", "oil", "cream", "juice", "broth", "stock", "wine", "vinegar", "extract", "vanilla", "syrup", "puree", "yogurt", "sauce"];
+
+// Baking recipes default to metric (weights are how bakers work); cooking
+// defaults to US. Detected from an explicit metric measurement mode or baking
+// keywords in the title/tags.
+const BAKING_RE = /\b(bake|baking|cake|bread|pastry|pastries|cookie|muffin|scone|biscuit|dessert|tart|pie|brownie|cupcake|frosting|icing|dough|loaf|loaves|croissant|custard|meringue)s?\b/i;
+function isBakingRecipe(recipe) {
+  if (recipe && recipe.measurementMode === "metric") return true;
+  const hay = `${recipe && recipe.title ? recipe.title : ""} ${recipe && Array.isArray(recipe.tags) ? recipe.tags.join(" ") : ""}`;
+  return BAKING_RE.test(hay);
+}
+
+// Convert a US measure (value + unit + ingredient name) to metric. Returns
+// { value, unit } in g or ml, or null when we cannot convert confidently.
+function usToMetric(value, unit, name) {
+  const u = String(unit || "").toLowerCase().replace(/\.$/, "");
+  const lname = String(name || "").toLowerCase();
+  if (u === "oz" || u === "ounce" || u === "ounces") return { value: Math.round(value * 28.35), unit: "g" };
+  if (u === "lb" || u === "lbs" || u === "pound" || u === "pounds") return { value: Math.round(value * 453.6), unit: "g" };
+  const cups = VOLUME_TO_CUP[u];
+  if (!cups || !(Number(value) > 0)) return null;
+  let bestKey = null;
+  for (const k of Object.keys(SOLID_G_PER_CUP)) if (lname.includes(k) && (!bestKey || k.length > bestKey.length)) bestKey = k;
+  if (bestKey) return { value: Math.round(value * cups * SOLID_G_PER_CUP[bestKey]), unit: "g" };
+  if (LIQUID_KEYWORDS.some((w) => lname.includes(w))) return { value: Math.round(value * cups * CUP_ML), unit: "ml" };
+  return null;
+}
+
+// Parse one ingredient line into { us: {value, unit}, metric: {value, unit}|null,
+// name }. Uses an inline "(284g)" / "(360ml)" when present, else the density
+// table. `name` is cleaned of the leading quantity, unit, parenthetical, and any
+// "plus N unit" fragment so metric mode reads cleanly.
+function ingredientMeasure(line) {
+  const text = String(line ?? "");
+  const parsed = parseLeadingQuantity(text);
+  if (!parsed) return { line: text, us: null, metric: null, name: text };
+  let rest = parsed.rest.replace(/^\s+/, "");
+  const unitMatch = rest.match(/^([a-zA-Z.]+)\s*/);
+  const usUnit = unitMatch ? unitMatch[1].replace(/\.$/, "") : "";
+  let after = unitMatch ? rest.slice(unitMatch[0].length) : rest;
+  let metric = null;
+  const paren = after.match(/\(\s*(\d+(?:[.,]\d+)?)\s*(g|kg|ml|l|grams?|milliliters?|milliliter)\s*\)\s*/i);
+  if (paren) {
+    let mv = Number(paren[1].replace(",", "."));
+    let mu = paren[2].toLowerCase();
+    if (/^grams?$/.test(mu)) mu = "g"; else if (/milliliter/.test(mu)) mu = "ml";
+    if (mu === "kg") { mv *= 1000; mu = "g"; } else if (mu === "l") { mv *= 1000; mu = "ml"; }
+    metric = { value: Math.round(mv), unit: mu };
+    after = after.replace(paren[0], "");
+  }
+  let name = after.replace(/^(?:plus|and|\+)\s+[\d¼½¾⅓⅔⅛\/.\s]+[a-zA-Z.]+\s+/i, "").replace(/^of\s+/i, "").trim();
+  if (!metric) metric = usToMetric(parsed.value, usUnit, name);
+  return { line: text, us: { value: parsed.value, unit: usUnit }, metric, name };
 }
 
 // Imported recipes often pack several ingredients into one line, sometimes
@@ -641,6 +712,6 @@ const DEFAULT_STAPLES = ["salt", "pepper", "black pepper", "olive oil", "oil", "
 // (where `module` is undefined) never sees this and the shared-scope model is
 // unchanged.
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { parseLeadingQuantity, isIngredientHeader, normalizeIngredientList, formatQuantity, splitCompoundIngredient };
+  module.exports = { parseLeadingQuantity, isIngredientHeader, normalizeIngredientList, formatQuantity, splitCompoundIngredient, usToMetric, ingredientMeasure, isBakingRecipe };
 }
 
