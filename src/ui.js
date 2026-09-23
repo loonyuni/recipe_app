@@ -714,6 +714,17 @@ function applyDrawerScaling() {
     const ingredients = sections[Number(list.dataset.section) || 0]?.ingredients || [];
     list.innerHTML = normalizeIngredientList(ingredients).map((ingredient, index) => {
       if (isIngredientHeader(ingredient)) return `<li class="ingredient-header">${esc(ingredient)}</li>`;
+      if (state.measureMode === "metric") {
+        const m = ingredientMeasure(ingredient);
+        if (m.metric) {
+          const val = m.metric.value * factor;
+          return `<li class="ingredient-scalable">
+            <input class="ingredient-qty" type="text" inputmode="decimal" value="${escAttr(formatQuantity(val))}" data-index="${index}" data-original="${escAttr(m.metric.value)}" aria-label="Quantity for ${escAttr(m.name || "ingredient")}" />
+            <span class="ingredient-rest">${esc(`${m.metric.unit} ${m.name}`)}</span>
+          </li>`;
+        }
+        // No metric equivalent (eggs, "to taste"): fall through to the US line.
+      }
       const scaled = scaleIngredient(ingredient, factor);
       if (!scaled.scaled) return `<li class="ingredient-static">${esc(ingredient)}</li>`;
       const rest = scaled.rest.replace(/^\s+/, "");
@@ -1009,6 +1020,7 @@ function showRecipe(id, { updateUrl = true } = {}) {
   if (!recipe) return;
   state.activeRecipe = recipe;
   state.activeVariant = null;
+  state.measureMode = isBakingRecipe(recipe) ? "metric" : "us";
   state.mode = "detail";
   drawerScale = 1;
   recordRecentView(recipe);
@@ -1075,6 +1087,14 @@ function renderDetail(recipe) {
         ${editable ? `<button type="button" class="variant-link variant-link-danger" data-variant-del="${escAttr(activeV.id)}">Delete</button>` : ""}
       </div>
     </div>` : ""}` : "";
+  // Metric toggle: shown only when at least one ingredient can convert to g/ml
+  // (inline value from the source or the density table).
+  const hasMetric = sections.some((s) => s.ingredients.some((i) => !isIngredientHeader(i) && ingredientMeasure(i).metric));
+  const measureToggleHtml = hasMetric ? `
+      <div class="measure-toggle" id="measure-toggle">
+        <button type="button" class="measure-btn${state.measureMode !== "metric" ? " is-active" : ""}" data-measure="us">US</button>
+        <button type="button" class="measure-btn${state.measureMode === "metric" ? " is-active" : ""}" data-measure="metric">Metric</button>
+      </div>` : "";
   const scalePanelHtml = `
     <div class="scale-panel">
       <div class="scale-controls" id="scale-controls">
@@ -1084,6 +1104,7 @@ function renderDetail(recipe) {
           <button type="button" class="scale-button" data-scale="1">1×</button>
           <button type="button" class="scale-button" data-scale="2">2×</button>
         </div>
+        ${measureToggleHtml}
         <button type="button" class="ghost-button scale-reset" id="scale-reset">Reset</button>
       </div>
       <p class="scale-summary">Makes <input class="scale-servings" id="scale-servings" type="text" inputmode="decimal" aria-label="Target servings" /> servings<span class="scale-factor" id="scale-factor"></span></p>
@@ -1230,6 +1251,13 @@ function renderDetail(recipe) {
     button.addEventListener("click", () => { drawerScale = Number(button.dataset.scale); applyDrawerScaling(); });
   });
   $("#scale-reset").addEventListener("click", () => { drawerScale = 1; applyDrawerScaling(); });
+  $$("#measure-toggle .measure-btn").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.measureMode = button.dataset.measure;
+      $$("#measure-toggle .measure-btn").forEach((b) => b.classList.toggle("is-active", b.dataset.measure === state.measureMode));
+      applyDrawerScaling();
+    });
+  });
   const servingsInput = $("#scale-servings");
   if (servingsInput) servingsInput.addEventListener("change", onServingsChange);
   applyDrawerScaling();
